@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro de Barberos</title>
+    <link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Registro de Barberos</h1>
+    <form id="registroBarberoForm">
+        <div>
+            <label for="nombreBarberia">Nombre de la Barbería:</label>
+            <input type="text" id="nombreBarberia" required>
+        </div>
+        <div>
+            <label for="nombreBarbero">Nombre del Barbero:</label>
+            <input type="text" id="nombreBarbero" required>
+        </div>
+        <div>
+            <label for="whatsapp">Número de WhatsApp:</label>
+            <input type="tel" id="whatsapp" required>
+        </div>
+        <button type="submit">Registrar Barbero</button>
+    </form>
+
+    <script>
+        const SUPABASE_URL = 'https://specixzrlqunftpljhxu.supabase.co'; // Reemplaza con tu API URL de Supabase
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNwZWNpeHpybHF1bmZ0cGxqaHh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY0ODQ3MjAsImV4cCI6MjA2MjA2MDcyMH0.TsGiM3kOkZR0Z106Ea0nhUJF9OaQa5VbKpaJrmh2V5s'; // Reemplaza con tu Anon Key de Supabase
+
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const registroBarberoForm = document.getElementById('registroBarberoForm');
+
+            registroBarberoForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+
+                const nombreBarberia = document.getElementById('nombreBarberia').value;
+                const nombreBarbero = document.getElementById('nombreBarbero').value;
+                const whatsapp = document.getElementById('whatsapp').value;
+
+                const { data, error } = await supabase
+                    .from('barberos') // Nombre de tu tabla
+                    .insert([
+                        { nombre_barberia: nombreBarberia, nombre_barbero: nombreBarbero, whatsapp: whatsapp },
+                    ]);
+
+                if (error) {
+                    console.error("Error al insertar datos: ", error);
+                    alert('Hubo un error al registrar el barbero.');
+                } else {
+                    console.log("Datos insertados correctamente: ", data);
+                    alert('Barbero registrado con éxito!');
+                    registroBarberoForm.reset(); // Limpia el formulario
+                }
+            });
+        });
+    </script>
+</body>
+</html>
