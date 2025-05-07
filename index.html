@@ -1,61 +1,45 @@
 <!DOCTYPE html>
-<html lang="es">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Registro de Barberos</title>
-    <link rel="stylesheet" href="style.css">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial; max-width: 500px; margin: 20px auto; }
+        .form-group { margin-bottom: 15px; }
+        input { width: 100%; padding: 8px; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; }
+    </style>
 </head>
 <body>
-    <h1>Registro de Barberos</h1>
-    <form id="registroBarberoForm">
-        <div>
-            <label for="nombreBarberia">Nombre de la Barbería:</label>
-            <input type="text" id="nombreBarberia" required>
+    <h2>Registro de Barbero</h2>
+    <form id="registroForm">
+        <div class="form-group">
+            <input type="text" id="nombre" placeholder="Nombre" required>
         </div>
-        <div>
-            <label for="nombreBarbero">Nombre del Barbero:</label>
-            <input type="text" id="nombreBarbero" required>
+        <div class="form-group">
+            <input type="email" id="correo" placeholder="Correo electrónico" required>
         </div>
-        <div>
-            <label for="whatsapp">Número de WhatsApp:</label>
-            <input type="tel" id="whatsapp" required>
+        <div class="form-group">
+            <input type="tel" id="whatsapp" placeholder="Número WhatsApp" required>
         </div>
-        <button type="submit">Registrar Barbero</button>
+        <button type="submit">Registrar</button>
     </form>
 
     <script>
-        const SUPABASE_URL = 'https://specixzrlqunftpljhxu.supabase.co'; // Reemplaza con tu API URL de Supabase
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNwZWNpeHpybHF1bmZ0cGxqaHh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY0ODQ3MjAsImV4cCI6MjA2MjA2MDcyMH0.TsGiM3kOkZR0Z106Ea0nhUJF9OaQa5VbKpaJrmh2V5s'; // Reemplaza con tu Anon Key de Supabase
+        document.getElementById('registroForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const data = {
+                nombre: document.getElementById('nombre').value,
+                correo: document.getElementById('correo').value,
+                whatsapp: document.getElementById('whatsapp').value
+            };
 
-        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const registroBarberoForm = document.getElementById('registroBarberoForm');
-
-            registroBarberoForm.addEventListener('submit', async (event) => {
-                event.preventDefault();
-
-                const nombreBarberia = document.getElementById('nombreBarberia').value;
-                const nombreBarbero = document.getElementById('nombreBarbero').value;
-                const whatsapp = document.getElementById('whatsapp').value;
-
-                const { data, error } = await supabase
-                    .from('barberos') // Nombre de tu tabla
-                    .insert([
-                        { nombre_barberia: nombreBarberia, nombre_barbero: nombreBarbero, whatsapp: whatsapp },
-                    ]);
-
-                if (error) {
-                    console.error("Error al insertar datos: ", error);
-                    alert('Hubo un error al registrar el barbero.');
-                } else {
-                    console.log("Datos insertados correctamente: ", data);
-                    alert('Barbero registrado con éxito!');
-                    registroBarberoForm.reset(); // Limpia el formulario
-                }
-            });
+            fetch('https://script.google.com/macros/s/AKfycbz_IxV2YU2t8YAF_vU4nqYzZ0xR1tWJhBSPMB7tJifihhVU_0Y5H9oL3TQ2iT78ZORU/exec', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            })
+            .then(response => alert('Registro exitoso!'))
+            .catch(error => alert('Error: ' + error));
         });
     </script>
 </body>
