@@ -437,4 +437,222 @@
                         break;
                     
                     default:
-                        this.addBotMessage('<div class="bot-card"><p>Comando no reconocido.</p></
+                        this.addBotMessage('<div class="bot-card"><p>Comando no reconocido.</p></div>');
+                }
+            }
+
+            async handleAuthenticatedCommand(input) {
+                const [command, ...args] = input.split(' ');
+                const argString = args.join(' ');
+
+                switch(command) {
+                    case '/miperfil': await this.showBarberProfile(); break;
+                    case '/reservas': await this.showTodayBookings(); break;
+                    case '/chats': await this.showClientChats(); break;
+                    case '/cerrar': await this.logout(); break;
+                    case 'menu': case 'menú': this.showMainMenu(); break;
+                    
+                    case '/horario':
+                        if (argString === 'ver') await this.showAvailability();
+                        else if (argString === 'definir') await this.promptDaySelection();
+                        else this.showHorarioMenu();
+                        break;
+                    
+                    case '/horario-cerrado':
+                        const dayKey = args[0];
+                        if (dayKey) await this.setAvailability(dayKey, []);
+                        break;
+
+                    case '/servicios':
+                        if (argString === 'ver') await this.showServices();
+                        else if (argString === 'agregar') {
+                            this.addBotMessage('<div class="bot-card"><p>¿Cuál es el nombre del nuevo servicio?</p></div>');
+                            this.currentFlow = 'servicio_add_name';
+                        }
+                        else if (argString === 'editar') await this.promptServiceSelectionToEdit();
+                        else this.showServicesMenu();
+                        break;
+                        
+                    default:
+                        this.addBotMessage('<div class="bot-card"><p>Opción no reconocida.</p></div>');
+                        this.showMainMenu();
+                }
+            }
+
+            // --- MENUS ---
+            showMainMenu() { const menuHTML = `<div class="bot-card"><h3>Menú Principal</h3><p>¿Qué te gustaría gestionar?</p><div class="command-buttons-container"><button class="command-button" data-command="/miperfil">👤 Mi Perfil</button><button class="command-button" data-command="/horario">⏰ Mi Horario</button><button class="command-button" data-command="/servicios">🛠️ Mis Servicios</button><button class="command-button" data-command="/chats">💬 Mis Chats</button><button class="command-button full-width" data-command="/cerrar">🚪 Cerrar Sesión</button></div></div>`; this.addBotMessage(menuHTML); }
+            showServicesMenu() { const menuHTML = `<div class="bot-card"><h3>🛠️ Gestión de Servicios</h3><div class="command-buttons-container"><button class="command-button" data-command="/servicios ver">Ver</button><button class="command-button" data-command="/servicios agregar">Agregar</button><button class="command-button" data-command="/servicios editar">Editar</button><button class="command-button full-width return" data-command="menu">Volver al Menú</button></div></div>`; this.addBotMessage(menuHTML); }
+            showHorarioMenu() { const menuHTML = `<div class="bot-card"><h3>⏰ Gestión de Horario</h3><div class="command-buttons-container"><button class="command-button" data-command="/horario ver">Ver mi Horario</button><button class="command-button" data-command="/horario definir">Definir/Editar</button><button class="command-button full-width return" data-command="menu">Volver al Menú</button></div></div>`; this.addBotMessage(menuHTML); }
+            
+            // --- DATA DISPLAY ---
+            async getBarberProfile() { if (this.barberProfile) return this.barberProfile; const { data, error } = await supabase.from('barbers').select('*').eq('user_id', this.currentUser.id).single(); if (error) { console.error(error); return null; } this.barberProfile = data; return data; }
+            async showBarberProfile() { const b = await this.getBarberProfile(); if (!b) return; const p = `<div class="bot-card"><h3>👤 Tu Perfil</h3><ul><li><span class="item-name">Nombre</span> <span class="item-detail">${b.first_name} ${b.last_name}</span></li><li><span class="item-name">Barbería</span> <span class="item-detail">${b.barber_shop_name}</span></li><li><span class="item-name">Ubicación</span> <span class="item-detail">${b.location || 'No especificada'}</span></li><li><span class="item-name">Código Cliente</span> <span class="item-detail" style="font-weight: bold; color: #000;">${b.public_code || 'N/A'}</span></li></ul></div>`; this.addBotMessage(p); }
+            async showServices() { const b = await this.getBarberProfile(); if (!b) return; let s = ''; if (b.services && b.services.length > 0) { s = b.services.map(svc => `<li><span class="item-name">${svc.name}</span><span class="item-detail">$${svc.price}</span></li>`).join(''); } else { s = '<p>Aún no has agregado servicios.</p>'; } this.addBotMessage(`<div class="bot-card"><h3>🛠️ Tus Servicios</h3><ul>${s}</ul></div>`); this.showServicesMenu(); }
+            async showAvailability() { const b = await this.getBarberProfile(); if (!b) return; const d = { mon: 'Lunes', tue: 'Martes', wed: 'Miércoles', thu: 'Jueves', fri: 'Viernes', sat: 'Sábado', sun: 'Domingo' }; let a = Object.keys(d).map(k => { const h = b.availability[k] || []; const t = h.length > 0 ? h.map(hr => `${hr}:00`).join(', ') : 'Cerrado'; return `<li><span class="item-name">${d[k]}</span><span class="item-detail">${t}</span></li>`; }).join(''); this.addBotMessage(`<div class="bot-card"><h3>⏰ Tu Disponibilidad</h3><ul>${a}</ul></div>`); this.showHorarioMenu(); }
+            async showTodayBookings() { this.addBotMessage('<div class="bot-card"><p>📅 La función de reservas está en desarrollo. ¡Vuelve pronto!</p></div>'); }
+
+            // --- EDITING FLOWS ---
+            async promptServiceSelectionToEdit() { const b = await this.getBarberProfile(); if (!b || !b.services || b.services.length === 0) { this.addBotMessage('<div class="bot-card"><p>No tienes servicios para editar.</p></div>'); this.showServicesMenu(); return; } const btns = b.services.map(s => `<button class="command-button" data-service-edit="${JSON.stringify(s).replace(/"/g, "'")}">${s.name} ($${s.price})</button>`).join(''); this.addBotMessage(`<div class="bot-card"><h3>Selecciona un servicio para editar</h3><div class="command-buttons-container">${btns}<button class="command-button full-width return" data-command="/servicios">Cancelar</button></div></div>`); }
+            async startServiceEditFlow(serviceDataString) { this.userData.serviceToEdit = JSON.parse(serviceDataString.replace(/'/g, '"')); this.addBotMessage(`<div class="bot-card"><p>Editando "<strong>${this.userData.serviceToEdit.name}</strong>".</p><p>¿Cuál es el nuevo nombre?</p><p class="helper-text">Escribe 'mismo' para no cambiarlo.</p></div>`); this.currentFlow = 'servicio_edit_name'; }
+            async promptDaySelection() { const d = { mon: 'Lunes', tue: 'Martes', wed: 'Miércoles', thu: 'Jueves', fri: 'Viernes', sat: 'Sábado', sun: 'Domingo' }; const btns = Object.entries(d).map(([k, n]) => `<button class="command-button" data-day-edit="${k}">${n}</button>`).join(''); this.addBotMessage(`<div class="bot-card"><h3>Selecciona un día</h3><div class="command-buttons-container">${btns}<button class="command-button full-width return" data-command="/horario">Cancelar</button></div></div>`); }
+            async startDayEditFlow(dayKey) { const d = { mon: 'Lunes', tue: 'Martes', wed: 'Miércoles', thu: 'Jueves', fri: 'Viernes', sat: 'Sábado', sun: 'Domingo' }[dayKey]; let opts = ''; for (let i = 7; i <= 21; i++) opts += `<option value="${i}">${i.toString().padStart(2, '0')}:00</option>`; const card = `<div class="bot-card"><h3>Define el horario para <strong>${d}</strong></h3><div class="schedule-selector"><div class="schedule-row"><label for="start-hour-${dayKey}">Inicio:</label><select id="start-hour-${dayKey}">${opts}</select></div><div class="schedule-row"><label for="end-hour-${dayKey}">Fin:</label><select id="end-hour-${dayKey}">${opts}</select></div></div><div class="schedule-actions"><button class="command-button confirm" data-day-confirm="${dayKey}">Confirmar</button><button class="command-button cancel" data-command="/horario-cerrado ${dayKey}">No Laborar</button></div></div>`; this.addBotMessage(card); document.getElementById(`start-hour-${dayKey}`).value = 9; document.getElementById(`end-hour-${dayKey}`).value = 17; }
+
+            // --- DATA MUTATION ---
+            async addService(name, price) { const p = parseFloat(price); if (isNaN(p)) { this.addBotMessage('<div class="bot-card"><p>Precio no válido.</p></div>'); this.currentFlow = 'authenticated'; this.showServicesMenu(); return; } const b = await this.getBarberProfile(); const s = b.services || []; s.push({ name: name, price: p }); const { error } = await supabase.from('barbers').update({ services: s }).eq('user_id', this.currentUser.id); if (!error) this.addBotMessage(`<div class="bot-card"><p>✅ Servicio "<strong>${name}</strong>" agregado.</p></div>`); this.currentFlow = 'authenticated'; await this.showServices(); }
+            async updateService() { const { serviceToEdit, newServiceName, newServicePrice } = this.userData; const name = (newServiceName.toLowerCase() === 'mismo') ? serviceToEdit.name : newServiceName; const price = (newServicePrice.toLowerCase() === 'mismo') ? serviceToEdit.price : parseFloat(newServicePrice); if (isNaN(price)) { this.addBotMessage('<div class="bot-card"><p>Precio no válido.</p></div>'); this.currentFlow = 'authenticated'; this.showServicesMenu(); return; } const b = await this.getBarberProfile(); const s = b.services.map(svc => (svc.name === serviceToEdit.name) ? { name, price } : svc); const { error } = await supabase.from('barbers').update({ services: s }).eq('user_id', this.currentUser.id); if (!error) this.addBotMessage('<div class="bot-card"><p>✅ Servicio actualizado.</p></div>'); this.currentFlow = 'authenticated'; this.userData = {}; await this.showServices(); }
+            async setAvailability(dayKey, hours) { const b = await this.getBarberProfile(); let avail = b.availability || {}; avail[dayKey] = Array.isArray(hours) ? hours.sort((a,b) => a-b) : []; const { error } = await supabase.from('barbers').update({ availability: avail }).eq('user_id', this.currentUser.id); if (!error) this.addBotMessage(`<div class="bot-card"><p>✅ Horario actualizado.</p></div>`); this.currentFlow = 'authenticated'; await this.showAvailability(); }
+
+            // --- AUTHENTICATION ---
+            async checkAuthState() { this.showTyping(); const { data: { session } } = await supabase.auth.getSession(); this.hideTyping(); if (session && session.user) { this.currentUser = session.user; await this.getBarberProfile(); const name = this.barberProfile.first_name || this.currentUser.email; this.addBotMessage(`<div class="bot-card"><p>¡Hola de nuevo, <strong>${name}</strong>! 👋</p></div>`); this.showMainMenu(); this.currentFlow = 'authenticated'; this.subscribeToAllChatsNotifications(); /* --- NUEVO --- */ } else { this.startWelcomeFlow(); } }
+            startWelcomeFlow() { this.addBotMessage(`<div class="bot-card"><h3>¡Hola! Soy tu asistente 💈</h3><p>Para empezar, dime si eres un <strong>barbero</strong>.</p></div>`); this.currentFlow = 'welcome'; }
+            async handleAuthFlow(input) { switch(this.currentFlow) { case 'welcome': if (input === 'barbero') { this.addBotMessage(`<div class="bot-card"><p>Perfecto. ¿Ya tienes una cuenta?</p><p>Responde <strong>sí</strong> o <strong>no</strong>.</p></div>`); this.currentFlow = 'has_account'; } else { this.addBotMessage(`<div class="bot-card"><p>Esta interfaz es solo para barberos.</p></div>`) } break; case 'has_account': if (input.startsWith('s')) { this.addBotMessage('<div class="bot-card"><p>Ingresa tu correo electrónico:</p></div>'); this.currentFlow = 'login_email'; } else { this.addBotMessage('<div class="bot-card"><p>¡Genial! ¿Cuál es tu nombre?</p></div>'); this.currentFlow = 'register_name'; } break; case 'register_name': this.userData.firstName = input; this.addBotMessage(`<div class="bot-card"><p>¿Y tu apellido?</p></div>`); this.currentFlow = 'register_last_name'; break; case 'register_last_name': this.userData.lastName = input; this.addBotMessage('<div class="bot-card"><p>Ahora necesito tu correo:</p></div>'); this.currentFlow = 'register_email'; break; case 'register_email': this.userData.email = input; this.addBotMessage('<div class="bot-card"><p>Crea una contraseña (mínimo 6 caracteres):</p></div>'); this.currentFlow = 'register_password'; break; case 'register_password': if (input.length < 6) { this.addBotMessage('<div class="bot-card"><p>La contraseña es muy corta. Intenta de nuevo.</p></div>'); return; } this.userData.password = input; await this.registerUser(); break; case 'login_email': this.userData.email = input; this.addBotMessage('<div class="bot-card"><p>Ingresa tu contraseña:</p></div>'); this.currentFlow = 'login_password'; break; case 'login_password': await this.loginUser(input); break; } }
+            async registerUser() { const { data, error } = await supabase.auth.signUp({ email: this.userData.email, password: this.userData.password, options: { data: { first_name: this.userData.firstName, last_name: this.userData.lastName, user_type: 'barbero' } } }); if (error) { this.addBotMessage(`<div class="bot-card"><p>❌ Error en el registro: ${error.message}</p></div>`); this.startWelcomeFlow(); return; } if (data.user) { this.currentUser = data.user; await this.createBarberProfile(data.user.id); this.addBotMessage('<div class="bot-card"><p>✅ ¡Registro exitoso! Revisa tu correo para confirmar tu cuenta.</p></div>'); this.showMainMenu(); this.currentFlow = 'authenticated'; } }
+            async createBarberProfile(userId) { const code = Math.random().toString(36).substring(2, 8).toUpperCase(); await supabase.from('barbers').insert([{ user_id: userId, first_name: this.userData.firstName, last_name: this.userData.lastName, barber_shop_name: `Barbería de ${this.userData.firstName}`, services: [], availability: {}, public_code: code }]); }
+            async loginUser(password) { const { data, error } = await supabase.auth.signInWithPassword({ email: this.userData.email, password: password }); if (error) { this.addBotMessage(`<div class="bot-card"><p>❌ Credenciales incorrectas.</p></div>`); this.startWelcomeFlow(); return; } this.currentUser = data.user; this.addBotMessage('<div class="bot-card"><p>✅ ¡Inicio de sesión exitoso!</p></div>'); this.checkAuthState(); }
+            async logout() { 
+                await supabase.auth.signOut(); 
+                // --- MODIFICADO: Limpiar suscripción de notificaciones ---
+                if (this.notificationSubscription) {
+                    this.notificationSubscription.unsubscribe();
+                    this.notificationSubscription = null;
+                }
+                this.currentUser = null; this.barberProfile = null; this.userData = {}; this.addBotMessage('<div class="bot-card"><p>👋 ¡Sesión cerrada correctamente!</p></div>'); setTimeout(() => { this.messagesContainer.innerHTML = ''; this.startWelcomeFlow(); }, 1500); 
+            }
+
+            // --- FUNCIONALIDAD DE CHAT CON CLIENTES ---
+            
+            // --- SUSCRIPCIÓN GLOBAL A NOTIFICACIONES (NUEVO) ---
+            async subscribeToAllChatsNotifications() {
+                if (this.notificationSubscription) return;
+
+                const { data: chats, error } = await supabase
+                    .from('chats')
+                    .select('id')
+                    .eq('barber_id', this.barberProfile.id);
+                
+                if (error || !chats || chats.length === 0) {
+                    return; // No hay chats a los que suscribirse
+                }
+
+                const chatIds = chats.map(c => c.id);
+
+                this.notificationSubscription = supabase
+                    .channel('barber_notifications')
+                    .on('postgres_changes', {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'messages',
+                        filter: `chat_id=in.(${chatIds.join(',')})`
+                    }, payload => {
+                        // Mostrar indicador solo si el mensaje es de un cliente Y no estamos en ese chat
+                        if (payload.new.sender_type === 'client' && payload.new.chat_id !== this.activeChat.id) {
+                            const indicator = document.getElementById(`unread-${payload.new.chat_id}`);
+                            if (indicator) {
+                                indicator.classList.add('visible');
+                            }
+                        }
+                    })
+                    .subscribe();
+            }
+
+            async showClientChats() {
+                const { data: chats, error } = await supabase
+                    .from('chats')
+                    .select(`id, clients (id, first_name, last_name)`)
+                    .eq('barber_id', this.barberProfile.id);
+
+                if (error) { console.error(error); return; }
+                
+                this.clientChatsList.innerHTML = ''; // Limpiar lista
+                if (chats.length === 0) {
+                     this.clientChatsList.innerHTML = '<li>No tienes chats con clientes todavía.</li>';
+                } else {
+                    chats.forEach(chat => {
+                        const client = chat.clients;
+                        const clientName = `${client.first_name} ${client.last_name}`;
+                        const listItem = document.createElement('li');
+                        listItem.dataset.chatId = chat.id;
+                        listItem.dataset.clientId = client.id;
+                        listItem.dataset.clientName = clientName;
+                        // --- MODIFICADO: Se añade el div para el indicador de no leído ---
+                        listItem.innerHTML = `
+                            <div class="avatar">${clientName.charAt(0)}</div>
+                            <div class="chat-info">
+                                <div class="chat-name">${clientName}</div>
+                            </div>
+                            <div class="unread-indicator" id="unread-${chat.id}"></div>
+                        `;
+                        listItem.addEventListener('click', () => this.openChat(chat.id, client.id, clientName));
+                        this.clientChatsList.appendChild(listItem);
+                    });
+                }
+                this.switchView('clientChatsView');
+            }
+
+            async openChat(chatId, clientId, clientName) {
+                // --- NUEVO: Ocultar el indicador de no leído al abrir el chat ---
+                const indicator = document.getElementById(`unread-${chatId}`);
+                if (indicator) {
+                    indicator.classList.remove('visible');
+                }
+                
+                this.activeChat = { id: chatId, clientName, clientId };
+                this.switchView('singleChatView');
+                
+                this.singleChatMessages.innerHTML = 'Cargando mensajes...';
+                
+                // Cargar historial
+                const { data: messages, error } = await supabase
+                    .from('messages')
+                    .select('*')
+                    .eq('chat_id', chatId)
+                    .order('created_at', { ascending: true });
+                
+                this.singleChatMessages.innerHTML = '';
+                if (messages) {
+                    messages.forEach(msg => this.renderMessage(msg, this.singleChatMessages, false));
+                }
+                this.singleChatMessages.scrollTop = this.singleChatMessages.scrollHeight;
+
+                // Suscribirse a nuevos mensajes
+                this.subscribeToChatChannel(chatId);
+            }
+            
+            subscribeToChatChannel(chatId) {
+                if (this.chatSubscription) this.chatSubscription.unsubscribe();
+
+                this.chatSubscription = supabase
+                    .channel(`chat_${chatId}`)
+                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}`},
+                        (payload) => {
+                            // Solo renderizar si el mensaje no es del barbero actual
+                            if (payload.new.sender_type === 'client') {
+                                this.renderMessage(payload.new, this.singleChatMessages);
+                            }
+                        }
+                    )
+                    .subscribe();
+            }
+
+            async sendClientMessage(text) {
+                if (!this.activeChat.id) return;
+
+                const messagePayload = {
+                    chat_id: this.activeChat.id,
+                    sender_type: 'barber',
+                    sender_id: this.barberProfile.id,
+                    content: text
+                };
+
+                // Renderizar mensaje localmente al instante
+                this.renderMessage({ ...messagePayload, sender: 'user' }, this.singleChatMessages);
+
+                // Enviar a la base de datos
+                await supabase.from('messages').insert(messagePayload);
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => new ChatApp());
+    </script>
+</body>
+</html>
