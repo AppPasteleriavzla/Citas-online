@@ -242,7 +242,6 @@
                     .subscribe();
             }
 
-
             async handleButtonClick(event) {
                 const button = event.target.closest('.command-button');
                 if (!button || button.disabled) return;
@@ -321,7 +320,6 @@
                     return;
                 }
 
-
                 switch (input) {
                     case '/servicios': await this.showServices(); break;
                     case '/horario': await this.showAvailability(); break;
@@ -335,7 +333,7 @@
                 }
             }
 
-            // --- INICIO DE NUEVAS FUNCIONES PARA EL FLUJO DE RESERVA ---
+            // --- FUNCIONES MEJORADAS PARA VERIFICACIÓN DE DISPONIBILIDAD ---
 
             parseDateInput(input) {
                 const now = new Date();
@@ -378,13 +376,14 @@
                 this.hideTyping();
             }
             
+            // --- FUNCIÓN MEJORADA PARA MOSTRAR HORARIOS DISPONIBLES ---
             async showAvailableTimesForDate(date) {
                 const dayMapping = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
                 const dayKey = dayMapping[date.getDay()];
                 const barberSchedule = this.barberData.availability[dayKey] || [];
 
                 if (barberSchedule.length === 0) {
-                    this.addBotMessage(`<div class="bot-card"><p>El barbero no trabaja el día ${date.toLocaleDateString()}. Por favor, elige otra fecha.</p></div>`);
+                    this.addBotMessage(`<div class="bot-card"><p>❌ El barbero no trabaja el ${date.toLocaleDateString()}. Por favor, elige otra fecha.</p></div>`);
                     this.currentFlow = 'booking_date';
                     return;
                 }
@@ -404,26 +403,73 @@
 
                 if (error) {
                     console.error("Error fetching existing bookings:", error);
-                    this.addBotMessage('<div class="bot-card"><p>Hubo un error al consultar la disponibilidad. Por favor, intenta más tarde.</p></div>');
+                    this.addBotMessage('<div class="bot-card"><p>⚠️ Error al verificar disponibilidad. Intenta nuevamente.</p></div>');
                     this.showClientMainMenu();
                     return;
                 }
                 
                 const bookedHours = existingBookings.map(b => new Date(b.booking_date).getHours());
+                // --- INICIO DE LA CORRECCIÓN ---
+
+                // Filtra las horas que ya están reservadas
+                let availableHours = barberSchedule.filter(hour => !bookedHours.includes(hour));
+
+                // AHORA, si la fecha es HOY, filtra las horas que ya pasaron
+                const now = new Date();
+                const isToday = date.getFullYear() === now.getFullYear() &&
+                              date.getMonth() === now.getMonth() &&
+                              date.getDate() === now.getDate();
+
+                if (isToday) {
+                    const currentHour = now.getHours();
+                    availableHours = availableHours.filter(hour => hour > currentHour);
+                }
                 
-                const availableHours = barberSchedule.filter(hour => !bookedHours.includes(hour));
+                // --- FIN DE LA CORRECCIÓN ---
 
                 if (availableHours.length === 0) {
-                    this.addBotMessage(`<div class="bot-card"><p>No hay horas disponibles para el ${date.toLocaleDateString()}. Por favor, elige otra fecha.</p></div>`);
+                    this.addBotMessage(`
+                        <div class="bot-card">
+                            <p>❌ <strong>No hay cupos disponibles</strong> para el ${date.toLocaleDateString()}.</p>
+                            <p>💡 Todos los horarios están ocupados. Por favor, elige otra fecha.</p>
+                        </div>
+                    `);
                     this.currentFlow = 'booking_date';
                     return;
+                }
+
+                // Mostrar información de disponibilidad
+                const totalSlots = barberSchedule.length;
+                const availableSlots = availableHours.length;
+                const occupancyRate = Math.round(((totalSlots - availableSlots) / totalSlots) * 100);
+
+                let availabilityMessage = '';
+                if (occupancyRate > 80) {
+                    availabilityMessage = `<p style="color: #dc3545; font-weight: bold;">⚠️ Alta demanda - Quedan pocos cupos</p>`;
+                } else if (occupancyRate > 50) {
+                    availabilityMessage = `<p style="color: #ffc107; font-weight: bold;">📈 Demanda media</p>`;
+                } else {
+                    availabilityMessage = `<p style="color: #28a745; font-weight: bold;">✅ Buena disponibilidad</p>`;
                 }
 
                 const timeButtons = availableHours.map(hour => 
                     `<button class="command-button" data-command="reservar_hora:${hour}:00">${String(hour).padStart(2, '0')}:00</button>`
                 ).join('');
 
-                this.addBotMessage(`<div class="bot-card"><h3>Horas disponibles para el ${date.toLocaleDateString()}</h3><div class="command-buttons-container">${timeButtons}</div></div>`);
+                this.addBotMessage(`
+                    <div class="bot-card">
+                        <h3>⏰ Horas disponibles para el ${date.toLocaleDateString()}</h3>
+                        ${availabilityMessage}
+                        <p><strong>Disponibilidad:</strong> ${availableSlots}/${totalSlots} horarios libres</p>
+                        <div class="command-buttons-container">
+                            ${timeButtons}
+                            <button class="command-button full-width return" data-command="cancelar_reserva">📅 Elegir otra fecha</button>
+                        </div>
+                        <div class="helper-text">
+                            💡 Selecciona una hora para tu reserva
+                        </div>
+                    </div>
+                `);
                 this.currentFlow = 'booking_time';
             }
 
@@ -471,7 +517,6 @@
                     booking_date: this.bookingData.finalTimestamp.toISOString(),
                     status: 'confirmed'
                 };
-console.log("Enviando estos datos para la reserva:", bookingPayload);
 
                 const { error } = await supabase.from('bookings').insert(bookingPayload);
                 this.hideTyping();
@@ -487,34 +532,31 @@ console.log("Enviando estos datos para la reserva:", bookingPayload);
                 this.showClientMainMenu();
             }
 
-            // --- FIN DE NUEVAS FUNCIONES PARA EL FLUJO DE RESERVA ---
-async getAndSetClientSession(clientId) {
-    console.log("Cliente anónimo - modo sin autenticación avanzada");
-    
-    try {
-        // Intentamos una autenticación simple con anon key
-        const { data, error } = await supabase.auth.signInAnonymously({
-            options: {
-                data: {
-                    user_type: 'client',
-                    client_id: clientId
+            // --- AUTENTICACIÓN MEJORADA ---
+            async getAndSetClientSession(clientId) {
+                console.log("Cliente anónimo - modo sin autenticación avanzada");
+                
+                try {
+                    // Intentamos una autenticación simple con anon key
+                    const { data, error } = await supabase.auth.signInAnonymously({
+                        options: {
+                            data: {
+                                user_type: 'client',
+                                client_id: clientId
+                            }
+                        }
+                    });
+                    
+                    if (error) {
+                        console.warn("Auth anónima falló, continuando sin ella:", error);
+                        // No es crítico - continuamos
+                    } else {
+                        console.log("Sesión anónima establecida");
+                    }
+                } catch (error) {
+                    console.warn("Error no crítico en auth:", error);
                 }
             }
-        });
-        
-        if (error) {
-            console.warn("Auth anónima falló, continuando sin ella:", error);
-            // No es crítico - continuamos
-        } else {
-            console.log("Sesión anónima establecida");
-        }
-    } catch (error) {
-        console.warn("Error no crítico en auth:", error);
-    }
-}
-
-
-
 
             async checkConnection() {
                 const storedCode = localStorage.getItem('barber_code');
@@ -572,41 +614,40 @@ async getAndSetClientSession(clientId) {
                 }
             }
 
-async getOrCreateAnonymousClient() {
-    let clientId = localStorage.getItem('client_id');
-    
-    if (clientId) {
-        const { data: client, error } = await supabase.from('clients').select('id').eq('id', clientId).single();
-        if (client) {
-            this.clientProfile = { id: client.id };
-            await this.getAndSetClientSession(this.clientProfile.id);
-            return;
-        }
-    }
+            async getOrCreateAnonymousClient() {
+                let clientId = localStorage.getItem('client_id');
+                
+                if (clientId) {
+                    const { data: client, error } = await supabase.from('clients').select('id').eq('id', clientId).single();
+                    if (client) {
+                        this.clientProfile = { id: client.id };
+                        await this.getAndSetClientSession(this.clientProfile.id);
+                        return;
+                    }
+                }
 
-    // Crear nuevo cliente
-    const { data, error } = await supabase.from('clients').insert({
-        first_name: 'Cliente',
-        last_name: `Anónimo-${Math.random().toString(36).substring(2, 8)}`,
-        linked_barber_id: this.barberData.id
-    }).select().single();
+                // Crear nuevo cliente
+                const { data, error } = await supabase.from('clients').insert({
+                    first_name: 'Cliente',
+                    last_name: `Anónimo-${Math.random().toString(36).substring(2, 8)}`,
+                    linked_barber_id: this.barberData.id
+                }).select().single();
 
-    if (data) {
-        this.clientProfile = data;
-        localStorage.setItem('client_id', this.clientProfile.id);
-        await this.getAndSetClientSession(this.clientProfile.id);
-    } else {
-        console.error("Error creando cliente:", error);
-        // Fallback: crear perfil local temporal
-        this.clientProfile = { 
-            id: 'temp-' + Date.now(),
-            first_name: 'Cliente',
-            last_name: 'Temporal'
-        };
-    }
-}
+                if (data) {
+                    this.clientProfile = data;
+                    localStorage.setItem('client_id', this.clientProfile.id);
+                    await this.getAndSetClientSession(this.clientProfile.id);
+                } else {
+                    console.error("Error creando cliente:", error);
+                    // Fallback: crear perfil local temporal
+                    this.clientProfile = { 
+                        id: 'temp-' + Date.now(),
+                        first_name: 'Cliente',
+                        last_name: 'Temporal'
+                    };
+                }
+            }
 
-            
             async getOrCreateChatSession() {
                 if (!this.clientProfile) return;
                 const { data, error } = await supabase.from('chats')
@@ -627,7 +668,6 @@ async getOrCreateAnonymousClient() {
                     else console.error("Error creando chat:", newChatError);
                 }
             }
-
 
             updateHeader() {
                 this.chatHeader.innerHTML = `<h1>${this.barberData.barber_shop_name}</h1><p>Asistente de Citas</p><div class="notification-badge" id="notificationBadge">0</div>`;
@@ -759,6 +799,5 @@ async getOrCreateAnonymousClient() {
 
         document.addEventListener('DOMContentLoaded', () => new ClientChatApp());
     </script>
-
 </body>
 </html>
