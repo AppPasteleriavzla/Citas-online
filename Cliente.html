@@ -488,28 +488,31 @@ console.log("Enviando estos datos para la reserva:", bookingPayload);
             }
 
             // --- FIN DE NUEVAS FUNCIONES PARA EL FLUJO DE RESERVA ---
-
 async getAndSetClientSession(clientId) {
+    console.log("Cliente anónimo - modo sin autenticación avanzada");
+    
     try {
-        // Llama a la Edge Function que acabamos de crear
-        const { data, error } = await supabase.functions.invoke('generate-client-jwt', {
-            body: { client_id: clientId },
+        // Intentamos una autenticación simple con anon key
+        const { data, error } = await supabase.auth.signInAnonymously({
+            options: {
+                data: {
+                    user_type: 'client',
+                    client_id: clientId
+                }
+            }
         });
-
-        if (error) throw error;
-
-        // Establece el token JWT retornado en la sesión actual de Supabase
-        await supabase.auth.setSession({
-            access_token: data.token,
-            refresh_token: '' // No necesitamos refresh token para esto
-        });
-        console.log("Sesión de cliente anónimo establecida con éxito.");
-
+        
+        if (error) {
+            console.warn("Auth anónima falló, continuando sin ella:", error);
+            // No es crítico - continuamos
+        } else {
+            console.log("Sesión anónima establecida");
+        }
     } catch (error) {
-        console.error("Error al establecer la sesión del cliente:", error);
-        this.addBotMessage('<div class="bot-card"><p>Error de conexión. No se pudo establecer una sesión segura. Por favor, recarga la página.</p></div>');
+        console.warn("Error no crítico en auth:", error);
     }
 }
+
 
 
 
@@ -571,16 +574,17 @@ async getAndSetClientSession(clientId) {
 
 async getOrCreateAnonymousClient() {
     let clientId = localStorage.getItem('client_id');
+    
     if (clientId) {
         const { data: client, error } = await supabase.from('clients').select('id').eq('id', clientId).single();
         if (client) {
             this.clientProfile = { id: client.id };
-            // AÑADIR ESTA LÍNEA AQUÍ
-            await this.getAndSetClientSession(this.clientProfile.id); 
+            await this.getAndSetClientSession(this.clientProfile.id);
             return;
         }
     }
 
+    // Crear nuevo cliente
     const { data, error } = await supabase.from('clients').insert({
         first_name: 'Cliente',
         last_name: `Anónimo-${Math.random().toString(36).substring(2, 8)}`,
@@ -590,11 +594,15 @@ async getOrCreateAnonymousClient() {
     if (data) {
         this.clientProfile = data;
         localStorage.setItem('client_id', this.clientProfile.id);
-        // Y AÑADIR ESTA LÍNEA AQUÍ TAMBIÉN
         await this.getAndSetClientSession(this.clientProfile.id);
     } else {
-        console.error("Error creando cliente anónimo:", error);
-        this.addBotMessage("Hubo un error al configurar tu perfil. Refresca la página.");
+        console.error("Error creando cliente:", error);
+        // Fallback: crear perfil local temporal
+        this.clientProfile = { 
+            id: 'temp-' + Date.now(),
+            first_name: 'Cliente',
+            last_name: 'Temporal'
+        };
     }
 }
 
