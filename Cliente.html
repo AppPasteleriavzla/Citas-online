@@ -10,7 +10,16 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; height: 100vh; display: flex; justify-content: center; align-items: center; }
         .chat-container { width: 100%; max-width: 400px; height: 100vh; background: white; display: flex; flex-direction: column; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        .chat-header { background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; padding: 20px; text-align: center; position: relative; }
+        .chat-header { 
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); 
+            color: white; 
+            padding: 20px; 
+            text-align: center; 
+            position: relative; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
         .chat-header h1 { margin: 0; font-size: 1.5em; }
         .chat-header p { margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em; }
         .messages-container { flex: 1; padding: 15px; overflow-y: auto; background: #f8f9fa; min-height: 0; }
@@ -32,7 +41,6 @@
         .send-button:disabled { background: #ccc; cursor: not-allowed; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes typing { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
-        /* Estilos para tarjetas y botones (Mismos que el original) */
         .bot-card { background-color: #ffffff; border: 1px solid #e9ecef; border-radius: 12px; padding: 16px; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .bot-card h3 { margin: 0 0 12px 0; color: #343a40; border-bottom: 1px solid #f1f3f5; padding-bottom: 8px; font-size: 1.1em; }
         .bot-card p { margin: 0 0 8px 0; line-height: 1.5; color: #495057; }
@@ -43,98 +51,68 @@
         .command-button { background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 12px 8px; font-size: 0.9em; font-weight: 500; color: #495057; cursor: pointer; text-align: center; transition: background-color 0.2s, box-shadow 0.2s; width: 100%; }
         .command-button:hover { background-color: #e9ecef; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
 
-        /* --- ESTILOS PARA NOTIFICACIONES (NUEVO) --- */
+        /* --- ESTILOS PARA NOTIFICACIONES (NUEVO Y UNIFICADO) --- */
+        .header-icons {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        .icon-wrapper {
+            position: relative;
+            cursor: pointer;
+        }
+        .icon-wrapper svg {
+            width: 26px;
+            height: 26px;
+            fill: white;
+        }
         .notification-badge {
             position: absolute;
-            top: 15px;
-            right: 15px;
+            top: -5px;
+            right: -8px;
             background-color: #ff4757;
             color: white;
             border-radius: 50%;
-            width: 22px;
-            height: 22px;
+            width: 20px;
+            height: 20px;
+            font-size: 11px;
             display: none; /* Oculto por defecto */
             justify-content: center;
             align-items: center;
-            font-size: 12px;
             font-weight: bold;
-            cursor: pointer;
-            animation: pulse 2s infinite;
+            border: 2px solid #0056b3;
         }
-
-        .notification-popup {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background-color: white;
-            border-left: 4px solid #007bff;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            max-width: 300px;
-            transform: translateX(400px); /* Fuera de la pantalla */
-            transition: transform 0.3s ease-out;
-            z-index: 1000;
-        }
-
-        .notification-popup.show {
-            transform: translateX(0); /* Entra en la pantalla */
-        }
-
-        .notification-header {
+        .notification-badge.visible {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
+            animation: pulse-badge 2s infinite;
         }
-
-        .notification-title {
-            font-weight: bold;
-            color: #333;
-        }
-
-        .notification-close {
-            background: none;
-            border: none;
-            font-size: 18px;
-            cursor: pointer;
-            color: #999;
-            padding: 0;
-            line-height: 1;
-        }
-
-        .notification-message {
-            color: #666;
-            font-size: 14px;
-        }
-
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(255, 71, 87, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
+        @keyframes pulse-badge {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(255, 71, 87, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
         }
     </style>
 </head>
 <body>
     <div class="chat-container">
         <div class="chat-header" id="chatHeader">
-            <h1>💈 BarberConnect</h1>
-            <p>Portal del Cliente</p>
-            <div class="notification-badge" id="notificationBadge">0</div>
+            <div id="header-title">
+                <h1>💈 BarberConnect</h1>
+                <p>Portal del Cliente</p>
+            </div>
+            <div class="header-icons">
+                <div class="icon-wrapper" id="messagesIconWrapper" title="Ver mensajes">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 10H6v-2h12v2zm0-4H6V6h12v2z"></path></svg>
+                    <span class="notification-badge" id="notificationBadge"></span>
+                </div>
+            </div>
         </div>
         <div class="messages-container" id="messagesContainer"></div>
         <div class="input-container">
             <input type="text" class="message-input" id="messageInput" placeholder="Escribe un mensaje...">
             <button class="send-button" id="sendButton">➤</button>
         </div>
-    </div>
-
-    <div class="notification-popup" id="notificationPopup">
-        <div class="notification-header">
-            <div class="notification-title">💬 Nuevo mensaje</div>
-            <button class="notification-close" id="notificationClose">×</button>
-        </div>
-        <div class="notification-message" id="notificationMessage">Tienes un nuevo mensaje del barbero.</div>
     </div>
 
     <script>
@@ -147,15 +125,15 @@
                 this.currentFlow = 'init';
                 this.barberData = null;
                 this.clientProfile = null;
-                this.bookingData = {}; // Objeto para construir la reserva paso a paso
+                this.bookingData = {};
                 this.isTyping = false;
                 
                 this.chatId = null;
                 this.chatSubscription = null;
-
-                // --- PROPIEDADES PARA NOTIFICACIONES (NUEVO) ---
-                this.unreadCount = 0;
                 this.notificationSubscription = null;
+                
+                // Propiedades para notificaciones
+                this.unreadCount = 0;
 
                 // Elementos de la UI
                 this.messagesContainer = document.getElementById('messagesContainer');
@@ -163,11 +141,9 @@
                 this.sendButton = document.getElementById('sendButton');
                 this.chatHeader = document.getElementById('chatHeader');
                 
-                // --- ELEMENTOS DE UI PARA NOTIFICACIONES (NUEVO) ---
+                // Elementos de notificaciones
                 this.notificationBadge = document.getElementById('notificationBadge');
-                this.notificationPopup = document.getElementById('notificationPopup');
-                this.notificationMessage = document.getElementById('notificationMessage');
-                this.notificationClose = document.getElementById('notificationClose');
+                this.messagesIconWrapper = document.getElementById('messagesIconWrapper');
 
                 this.init();
             }
@@ -177,13 +153,7 @@
                 this.messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') this.handleSend(); });
                 this.messagesContainer.addEventListener('click', this.handleButtonClick.bind(this));
                 
-                // --- EVENT LISTENERS PARA NOTIFICACIONES (NUEVO) ---
-                this.notificationClose.addEventListener('click', () => {
-                    this.notificationPopup.classList.remove('show');
-                });
-
-                // Al hacer clic en la insignia, entra al chat y limpia notificaciones
-                this.notificationBadge.addEventListener('click', () => {
+                this.messagesIconWrapper.addEventListener('click', () => {
                     if (this.unreadCount > 0) {
                         this.enterLiveChatMode();
                     }
@@ -192,28 +162,12 @@
                 await this.checkConnection();
             }
 
-            // --- FUNCIONES PARA MANEJO DE NOTIFICACIONES (NUEVO) ---
-            showNewMessageNotification(messageContent) {
-                // Incrementar contador
-                this.unreadCount++;
-                this.updateNotificationBadge();
-
-                // Mostrar popup
-                this.notificationMessage.textContent = messageContent;
-                this.notificationPopup.classList.add('show');
-                
-                // Ocultar popup automáticamente después de 5 segundos
-                setTimeout(() => {
-                    this.notificationPopup.classList.remove('show');
-                }, 5000);
-            }
-
             updateNotificationBadge() {
                 if (this.unreadCount > 0) {
-                    this.notificationBadge.textContent = this.unreadCount;
-                    this.notificationBadge.style.display = 'flex';
+                    this.notificationBadge.textContent = this.unreadCount > 9 ? '9+' : this.unreadCount;
+                    this.notificationBadge.classList.add('visible');
                 } else {
-                    this.notificationBadge.style.display = 'none';
+                    this.notificationBadge.classList.remove('visible');
                 }
             }
 
@@ -222,7 +176,6 @@
                 this.updateNotificationBadge();
             }
 
-            // --- SUSCRIPCIÓN PERSISTENTE A NOTIFICACIONES (NUEVO) ---
             subscribeToNotifications() {
                 if (!this.chatId || this.notificationSubscription) return;
 
@@ -234,9 +187,9 @@
                         table: 'messages',
                         filter: `chat_id=eq.${this.chatId}`
                     }, (payload) => {
-                        // Si el mensaje es del barbero Y el cliente NO está en el chat vivo
                         if (payload.new.sender_type === 'barber' && this.currentFlow !== 'live_chat') {
-                            this.showNewMessageNotification(payload.new.content);
+                            this.unreadCount++;
+                            this.updateNotificationBadge();
                         }
                     })
                     .subscribe();
@@ -294,7 +247,6 @@
                     return;
                 }
 
-                // --- FLUJO DE RESERVA MODIFICADO ---
                 switch (this.currentFlow) {
                     case 'booking_date':
                         await this.handleDateSelection(input);
@@ -333,11 +285,9 @@
                 }
             }
 
-            // --- FUNCIONES MEJORADAS PARA VERIFICACIÓN DE DISPONIBILIDAD ---
-
             parseDateInput(input) {
                 const now = new Date();
-                now.setHours(0, 0, 0, 0); // Normalizar a medianoche
+                now.setHours(0, 0, 0, 0);
 
                 if (input === 'hoy') {
                     return now;
@@ -349,16 +299,15 @@
                 const parts = input.match(/^(\d{1,2})[\/\-](\d{1,2})$/);
                 if (parts) {
                     const day = parseInt(parts[1], 10);
-                    const month = parseInt(parts[2], 10) - 1; // Mes en JS es 0-11
+                    const month = parseInt(parts[2], 10) - 1;
                     const year = now.getFullYear();
                     const date = new Date(year, month, day);
-                    // Si la fecha es en el pasado (p.ej. pedir en Nov para Ene), asumimos el próximo año
                     if (date < now) {
                         date.setFullYear(year + 1);
                     }
                     return date;
                 }
-                return null; // Fecha no válida
+                return null;
             }
 
             async handleDateSelection(input) {
@@ -376,7 +325,6 @@
                 this.hideTyping();
             }
             
-            // --- FUNCIÓN MEJORADA PARA MOSTRAR HORARIOS DISPONIBLES ---
             async showAvailableTimesForDate(date) {
                 const dayMapping = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
                 const dayKey = dayMapping[date.getDay()];
@@ -388,7 +336,6 @@
                     return;
                 }
 
-                // Obtener reservas existentes para ese día
                 const startOfDay = new Date(date);
                 startOfDay.setHours(0, 0, 0, 0);
                 const endOfDay = new Date(date);
@@ -409,12 +356,9 @@
                 }
                 
                 const bookedHours = existingBookings.map(b => new Date(b.booking_date).getHours());
-                // --- INICIO DE LA CORRECCIÓN ---
-
-                // Filtra las horas que ya están reservadas
+                
                 let availableHours = barberSchedule.filter(hour => !bookedHours.includes(hour));
-
-                // AHORA, si la fecha es HOY, filtra las horas que ya pasaron
+                
                 const now = new Date();
                 const isToday = date.getFullYear() === now.getFullYear() &&
                               date.getMonth() === now.getMonth() &&
@@ -425,20 +369,12 @@
                     availableHours = availableHours.filter(hour => hour > currentHour);
                 }
                 
-                // --- FIN DE LA CORRECCIÓN ---
-
                 if (availableHours.length === 0) {
-                    this.addBotMessage(`
-                        <div class="bot-card">
-                            <p>❌ <strong>No hay cupos disponibles</strong> para el ${date.toLocaleDateString()}.</p>
-                            <p>💡 Todos los horarios están ocupados. Por favor, elige otra fecha.</p>
-                        </div>
-                    `);
+                    this.addBotMessage(`<div class="bot-card"><p>❌ <strong>No hay cupos disponibles</strong> para el ${date.toLocaleDateString()}.</p><p>💡 Todos los horarios están ocupados. Por favor, elige otra fecha.</p></div>`);
                     this.currentFlow = 'booking_date';
                     return;
                 }
 
-                // Mostrar información de disponibilidad
                 const totalSlots = barberSchedule.length;
                 const availableSlots = availableHours.length;
                 const occupancyRate = Math.round(((totalSlots - availableSlots) / totalSlots) * 100);
@@ -456,20 +392,7 @@
                     `<button class="command-button" data-command="reservar_hora:${hour}:00">${String(hour).padStart(2, '0')}:00</button>`
                 ).join('');
 
-                this.addBotMessage(`
-                    <div class="bot-card">
-                        <h3>⏰ Horas disponibles para el ${date.toLocaleDateString()}</h3>
-                        ${availabilityMessage}
-                        <p><strong>Disponibilidad:</strong> ${availableSlots}/${totalSlots} horarios libres</p>
-                        <div class="command-buttons-container">
-                            ${timeButtons}
-                            <button class="command-button full-width return" data-command="cancelar_reserva">📅 Elegir otra fecha</button>
-                        </div>
-                        <div class="helper-text">
-                            💡 Selecciona una hora para tu reserva
-                        </div>
-                    </div>
-                `);
+                this.addBotMessage(`<div class="bot-card"><h3>⏰ Horas disponibles para el ${date.toLocaleDateString()}</h3>${availabilityMessage}<p><strong>Disponibilidad:</strong> ${availableSlots}/${totalSlots} horarios libres</p><div class="command-buttons-container">${timeButtons}<button class="command-button full-width return" data-command="cancelar_reserva">📅 Elegir otra fecha</button></div></div>`);
                 this.currentFlow = 'booking_time';
             }
 
@@ -487,72 +410,25 @@
                 finalTimestamp.setHours(hour, 0, 0, 0);
                 this.bookingData.finalTimestamp = finalTimestamp;
                 
-                const confirmationHTML = `
-                    <div class="bot-card">
-                        <h3>Confirmar Reserva</h3>
-                        <p>Por favor, revisa los detalles de tu cita:</p>
-                        <ul>
-                            <li><strong>Servicio:</strong> ${this.bookingData.service.name}</li>
-                            <li><strong>Precio:</strong> $${this.bookingData.service.price}</li>
-                            <li><strong>Fecha:</strong> ${finalTimestamp.toLocaleDateString()}</li>
-                            <li><strong>Hora:</strong> ${finalTimestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</li>
-                        </ul>
-                        <div class="command-buttons-container">
-                            <button class="command-button" data-command="confirmar_reserva">✅ Confirmar</button>
-                            <button class="command-button" data-command="cancelar_reserva">❌ Cancelar</button>
-                        </div>
-                    </div>
-                `;
+                const confirmationHTML = `<div class="bot-card"><h3>Confirmar Reserva</h3><p>Por favor, revisa los detalles de tu cita:</p><ul><li><strong>Servicio:</strong> ${this.bookingData.service.name}</li><li><strong>Precio:</strong> $${this.bookingData.service.price}</li><li><strong>Fecha:</strong> ${finalTimestamp.toLocaleDateString()}</li><li><strong>Hora:</strong> ${finalTimestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</li></ul><div class="command-buttons-container"><button class="command-button" data-command="confirmar_reserva">✅ Confirmar</button><button class="command-button" data-command="cancelar_reserva">❌ Cancelar</button></div></div>`;
                 this.addBotMessage(confirmationHTML);
                 this.currentFlow = 'booking_confirmation';
             }
             
             async confirmAndCreateBooking() {
                 this.showTyping();
-                const bookingPayload = {
-                    barber_id: this.barberData.id,
-                    client_id: this.clientProfile.id,
-                    service_name: this.bookingData.service.name,
-                    price: this.bookingData.service.price,
-                    booking_date: this.bookingData.finalTimestamp.toISOString(),
-                    status: 'confirmed'
-                };
-
+                const bookingPayload = { barber_id: this.barberData.id, client_id: this.clientProfile.id, service_name: this.bookingData.service.name, price: this.bookingData.service.price, booking_date: this.bookingData.finalTimestamp.toISOString(), status: 'confirmed' };
                 const { error } = await supabase.from('bookings').insert(bookingPayload);
                 this.hideTyping();
-
-                if (error) {
-                    console.error("Error creating booking:", error);
-                    this.addBotMessage('<div class="bot-card"><p>Lo siento, ocurrió un error al crear tu reserva. Inténtalo de nuevo.</p></div>');
-                } else {
-                    this.addBotMessage('<div class="bot-card"><p>✅ ¡Tu reserva ha sido confirmada con éxito!</p></div>');
-                }
-                
-                this.bookingData = {}; // Limpiar datos de reserva
+                if (error) { console.error("Error creating booking:", error); this.addBotMessage('<div class="bot-card"><p>Lo siento, ocurrió un error al crear tu reserva. Inténtalo de nuevo.</p></div>');
+                } else { this.addBotMessage('<div class="bot-card"><p>✅ ¡Tu reserva ha sido confirmada con éxito!</p></div>'); }
+                this.bookingData = {};
                 this.showClientMainMenu();
             }
 
-            // --- AUTENTICACIÓN MEJORADA ---
             async getAndSetClientSession(clientId) {
-                console.log("Cliente anónimo - modo sin autenticación avanzada");
-                
                 try {
-                    // Intentamos una autenticación simple con anon key
-                    const { data, error } = await supabase.auth.signInAnonymously({
-                        options: {
-                            data: {
-                                user_type: 'client',
-                                client_id: clientId
-                            }
-                        }
-                    });
-                    
-                    if (error) {
-                        console.warn("Auth anónima falló, continuando sin ella:", error);
-                        // No es crítico - continuamos
-                    } else {
-                        console.log("Sesión anónima establecida");
-                    }
+                    await supabase.auth.signInAnonymously({ options: { data: { user_type: 'client', client_id: clientId } } });
                 } catch (error) {
                     console.warn("Error no crítico en auth:", error);
                 }
@@ -575,8 +451,6 @@
                         this.updateHeader();
                         this.addBotMessage(`<div class="bot-card"><h3>¡Hola de nuevo! 👋</h3><p>Estás conectado con <strong>${this.barberData.barber_shop_name}</strong>.</p></div>`);
                         this.showClientMainMenu();
-                        
-                        // --- MODIFICADO: Iniciar suscripción a notificaciones ---
                         this.subscribeToNotifications();
                     } else {
                         localStorage.clear();
@@ -606,8 +480,6 @@
                     this.updateHeader();
                     this.addBotMessage(`<div class="bot-card"><p>✅ ¡Conexión exitosa con <strong>${this.barberData.barber_shop_name}</strong>!</p></div>`);
                     this.showClientMainMenu();
-                    
-                    // --- MODIFICADO: Iniciar suscripción a notificaciones ---
                     this.subscribeToNotifications();
                 } else {
                     this.addBotMessage(`<div class="bot-card"><p>❌ Código no válido. Por favor, inténtalo de nuevo.</p></div>`);
@@ -616,64 +488,40 @@
 
             async getOrCreateAnonymousClient() {
                 let clientId = localStorage.getItem('client_id');
-                
                 if (clientId) {
                     const { data: client, error } = await supabase.from('clients').select('id').eq('id', clientId).single();
-                    if (client) {
-                        this.clientProfile = { id: client.id };
-                        await this.getAndSetClientSession(this.clientProfile.id);
-                        return;
-                    }
+                    if (client) { this.clientProfile = { id: client.id }; await this.getAndSetClientSession(this.clientProfile.id); return; }
                 }
-
-                // Crear nuevo cliente
-                const { data, error } = await supabase.from('clients').insert({
-                    first_name: 'Cliente',
-                    last_name: `Anónimo-${Math.random().toString(36).substring(2, 8)}`,
-                    linked_barber_id: this.barberData.id
-                }).select().single();
-
-                if (data) {
-                    this.clientProfile = data;
-                    localStorage.setItem('client_id', this.clientProfile.id);
-                    await this.getAndSetClientSession(this.clientProfile.id);
-                } else {
-                    console.error("Error creando cliente:", error);
-                    // Fallback: crear perfil local temporal
-                    this.clientProfile = { 
-                        id: 'temp-' + Date.now(),
-                        first_name: 'Cliente',
-                        last_name: 'Temporal'
-                    };
-                }
+                const { data, error } = await supabase.from('clients').insert({ first_name: 'Cliente', last_name: `Anónimo-${Math.random().toString(36).substring(2, 8)}`, linked_barber_id: this.barberData.id }).select().single();
+                if (data) { this.clientProfile = data; localStorage.setItem('client_id', this.clientProfile.id); await this.getAndSetClientSession(this.clientProfile.id);
+                } else { console.error("Error creando cliente:", error); this.clientProfile = { id: 'temp-' + Date.now(), first_name: 'Cliente', last_name: 'Temporal' }; }
             }
 
             async getOrCreateChatSession() {
                 if (!this.clientProfile) return;
-                const { data, error } = await supabase.from('chats')
-                    .select('id')
-                    .eq('barber_id', this.barberData.id)
-                    .eq('client_id', this.clientProfile.id)
-                    .single();
-
-                if (data) {
-                    this.chatId = data.id;
+                const { data, error } = await supabase.from('chats').select('id').eq('barber_id', this.barberData.id).eq('client_id', this.clientProfile.id).single();
+                if (data) { this.chatId = data.id;
                 } else {
-                    const { data: newChat, error: newChatError } = await supabase.from('chats').insert({
-                        barber_id: this.barberData.id,
-                        client_id: this.clientProfile.id
-                    }).select('id').single();
-
-                    if (newChat) this.chatId = newChat.id;
-                    else console.error("Error creando chat:", newChatError);
+                    const { data: newChat, error: newChatError } = await supabase.from('chats').insert({ barber_id: this.barberData.id, client_id: this.clientProfile.id }).select('id').single();
+                    if (newChat) this.chatId = newChat.id; else console.error("Error creando chat:", newChatError);
                 }
             }
 
             updateHeader() {
-                this.chatHeader.innerHTML = `<h1>${this.barberData.barber_shop_name}</h1><p>Asistente de Citas</p><div class="notification-badge" id="notificationBadge">0</div>`;
-                // Es importante re-seleccionar el elemento después de modificar el innerHTML
+                this.chatHeader.innerHTML = `
+                    <div id="header-title">
+                        <h1>${this.barberData.barber_shop_name}</h1>
+                        <p>Asistente de Citas</p>
+                    </div>
+                    <div class="header-icons">
+                        <div class="icon-wrapper" id="messagesIconWrapper" title="Ver mensajes">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 10H6v-2h12v2zm0-4H6V6h12v2z"></path></svg>
+                            <span class="notification-badge" id="notificationBadge"></span>
+                        </div>
+                    </div>`;
                 this.notificationBadge = document.getElementById('notificationBadge');
-                this.notificationBadge.addEventListener('click', () => {
+                this.messagesIconWrapper = document.getElementById('messagesIconWrapper');
+                this.messagesIconWrapper.addEventListener('click', () => {
                     if (this.unreadCount > 0) {
                         this.enterLiveChatMode();
                     }
@@ -681,28 +529,14 @@
             }
 
             showClientMainMenu() {
-                const menuHTML = `
-                    <div class="bot-card">
-                        <h3>Menú Principal</h3>
-                        <p>¿Cómo puedo ayudarte hoy?</p>
-                        <div class="command-buttons-container">
-                            <button class="command-button" data-command="/reservar">📅 Hacer una Reserva</button>
-                            <button class="command-button" data-command="/servicios">🛠️ Ver Servicios</button>
-                            <button class="command-button" data-command="/horario">⏰ Ver Horario</button>
-                            <button class="command-button" data-command="/hablar">💬 Hablar con el Barbero</button>
-                        </div>
-                    </div>`;
+                const menuHTML = `<div class="bot-card"><h3>Menú Principal</h3><p>¿Cómo puedo ayudarte hoy?</p><div class="command-buttons-container"><button class="command-button" data-command="/reservar">📅 Hacer una Reserva</button><button class="command-button" data-command="/servicios">🛠️ Ver Servicios</button><button class="command-button" data-command="/horario">⏰ Ver Horario</button><button class="command-button" data-command="/hablar">💬 Hablar con el Barbero</button></div></div>`;
                 this.addBotMessage(menuHTML);
                 this.currentFlow = 'main_menu';
             }
             
             showServices() {
                 let servicesHTML = '<p>Este barbero aún no ha agregado servicios.</p>';
-                if (this.barberData.services && this.barberData.services.length > 0) {
-                    servicesHTML = this.barberData.services.map(svc => 
-                        `<li><span>${svc.name}</span><strong>$${svc.price}</strong></li>`
-                    ).join('');
-                }
+                if (this.barberData.services && this.barberData.services.length > 0) { servicesHTML = this.barberData.services.map(svc => `<li><span>${svc.name}</span><strong>$${svc.price}</strong></li>`).join(''); }
                 this.addBotMessage(`<div class="bot-card"><h3>🛠️ Servicios Disponibles</h3><ul>${servicesHTML}</ul></div>`);
             }
 
@@ -710,23 +544,15 @@
                 const days = { mon: 'Lunes', tue: 'Martes', wed: 'Miércoles', thu: 'Jueves', fri: 'Viernes', sat: 'Sábado', sun: 'Domingo' };
                 let availabilityHTML = Object.keys(days).map(key => {
                     const hours = this.barberData.availability[key] || [];
-                    const timeRange = hours.length > 0
-                        ? hours.map(h => `${h}:00`).join(', ')
-                        : 'Cerrado';
+                    const timeRange = hours.length > 0 ? hours.map(h => `${h}:00`).join(', ') : 'Cerrado';
                     return `<li><span>${days[key]}</span><span>${timeRange}</span></li>`;
                 }).join('');
                 this.addBotMessage(`<div class="bot-card"><h3>⏰ Horario de Atención</h3><ul>${availabilityHTML}</ul></div>`);
             }
 
             async startBookingFlow() {
-                if (!this.barberData.services || this.barberData.services.length === 0) {
-                    this.addBotMessage('<div class="bot-card"><p>Lo siento, no hay servicios disponibles para reservar en este momento.</p></div>');
-                    return;
-                }
-                const buttonsHTML = this.barberData.services.map(s => 
-                    `<button class="command-button" data-command="reservar_servicio:${s.name}">${s.name} ($${s.price})</button>`
-                ).join('');
-
+                if (!this.barberData.services || this.barberData.services.length === 0) { this.addBotMessage('<div class="bot-card"><p>Lo siento, no hay servicios disponibles para reservar en este momento.</p></div>'); return; }
+                const buttonsHTML = this.barberData.services.map(s => `<button class="command-button" data-command="reservar_servicio:${s.name}">${s.name} ($${s.price})</button>`).join('');
                 this.addBotMessage(`<div class="bot-card"><h3>Selecciona un servicio para tu reserva</h3><div class="command-buttons-container">${buttonsHTML}</div></div>`);
                 this.currentFlow = 'booking_service';
             }
@@ -735,16 +561,10 @@
                 this.currentFlow = 'live_chat';
                 this.messagesContainer.innerHTML = ''; 
                 this.addBotMessage('<div class="bot-card"><p>Ahora estás chateando directamente con tu barbero. Escribe /menu para volver al menú principal.</p></div>');
-                
-                // --- MODIFICADO: Resetear contador de mensajes no leídos al entrar al chat ---
                 this.resetUnreadCount();
 
-                const { data: messages, error } = await supabase.from('messages')
-                    .select('*').eq('chat_id', this.chatId).order('created_at');
-                
-                if (messages) {
-                    messages.forEach(msg => this.renderMessage(msg, false));
-                }
+                const { data: messages, error } = await supabase.from('messages').select('*').eq('chat_id', this.chatId).order('created_at');
+                if (messages) { messages.forEach(msg => this.renderMessage(msg, false)); }
                 this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
 
                 if (this.chatSubscription) this.chatSubscription.unsubscribe();
@@ -759,13 +579,7 @@
             }
 
             async sendRealtimeMessage(text) {
-                const messagePayload = {
-                    chat_id: this.chatId,
-                    sender_id: this.clientProfile.id,
-                    sender_type: 'client',
-                    content: text
-                };
-                
+                const messagePayload = { chat_id: this.chatId, sender_id: this.clientProfile.id, sender_type: 'client', content: text };
                 this.renderMessage({ ...messagePayload, sender_type: 'client', content: text });
                 await supabase.from('messages').insert(messagePayload);
             }
@@ -777,20 +591,13 @@
             renderMessage(message, isNew = true) {
                 const messageDiv = document.createElement('div');
                 let senderClass = 'bot';
-                if (message.sender === 'user' || message.sender_type === 'client') {
-                    senderClass = 'user';
-                }
-                
+                if (message.sender === 'user' || message.sender_type === 'client') { senderClass = 'user'; }
                 messageDiv.className = `message ${senderClass}`;
                 const content = message.text || message.content;
                 const time = new Date(message.time || message.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                
                 messageDiv.innerHTML = `<div class="message-content">${content}</div><div class="message-time">${time}</div>`;
                 this.messagesContainer.appendChild(messageDiv);
-                
-                if (isNew) {
-                    this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
-                }
+                if (isNew) { this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight; }
             }
 
             showTyping() { if (this.isTyping) return; this.isTyping = true; const typingDiv = document.createElement('div'); typingDiv.className = 'message bot'; typingDiv.id = 'typing-indicator'; typingDiv.innerHTML = `<div class="message-content"><div class="typing"><span></span><span></span><span></span></div></div>`; this.messagesContainer.appendChild(typingDiv); this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight; }
