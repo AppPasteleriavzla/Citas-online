@@ -140,6 +140,41 @@
             70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(255, 71, 87, 0); }
             100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
         }
+
+        .chat-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    /* Se ajusta el padding para dejar espacio a los lados */
+    padding: 20px 50px; /* Aumentamos el padding lateral */
+    text-align: center;
+    border-bottom: 1px solid #e0e0e0;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#headerSubtitle {
+    margin: 5px 0 0 0;
+    opacity: 0.9;
+    font-size: 0.9em;
+
+    /* --- NUEVAS PROPIEDADES PARA EVITAR DESBORDAMIENTO --- */
+    white-space: nowrap;      /* Evita que el texto salte de línea */
+    overflow: hidden;         /* Oculta el texto que se desborda */
+    text-overflow: ellipsis;  /* Muestra "..." al final */
+    max-width: 230px;         /* Ancho máximo antes de cortar el texto */
+    margin-left: auto;        /* Ayuda a centrarlo correctamente */
+    margin-right: auto;       /* Ayuda a centrarlo correctamente */
+}
+
+/* Ajuste fino para la posición de los iconos con el nuevo padding */
+.back-button {
+    left: 15px;
+}
+.header-icons {
+    right: 15px;
+}
     </style>
 </head>
 <body>
@@ -651,3 +686,4 @@
     </script>
 </body>
 </html>
+
