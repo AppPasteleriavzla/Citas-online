@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BarberConnect - Cliente</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
         /* Estilos base (Mismos que el archivo original para mantener la consistencia) */
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -44,14 +45,17 @@
         .bot-card { background-color: #ffffff; border: 1px solid #e9ecef; border-radius: 12px; padding: 16px; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .bot-card h3 { margin: 0 0 12px 0; color: #343a40; border-bottom: 1px solid #f1f3f5; padding-bottom: 8px; font-size: 1.1em; }
         .bot-card p { margin: 0 0 8px 0; line-height: 1.5; color: #495057; }
-        .bot-card ul { list-style: none; padding: 0; margin: 0; }
+        .bot-card ul { list-style: none; padding: 0; margin: 0 0 10px 0; }
         .bot-card li { padding: 8px 0; border-bottom: 1px solid #f1f3f5; display: flex; justify-content: space-between; align-items: center; }
         .bot-card li:last-child { border-bottom: none; }
+        .bot-card .helper-text { font-size: 0.8em; color: #888; margin-top: 5px; }
         .command-buttons-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; margin-top: 10px; }
         .command-button { background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 12px 8px; font-size: 0.9em; font-weight: 500; color: #495057; cursor: pointer; text-align: center; transition: background-color 0.2s, box-shadow 0.2s; width: 100%; }
         .command-button:hover { background-color: #e9ecef; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .command-button.full-width { grid-column: 1 / -1; }
+        .command-button.confirm { background-color: #28a745; color: white; }
+        .command-button.cancel { background-color: #dc3545; color: white; }
 
-        /* --- ESTILOS PARA NOTIFICACIONES (NUEVO Y UNIFICADO) --- */
         .header-icons {
             position: absolute;
             right: 15px;
@@ -92,6 +96,13 @@
             70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(255, 71, 87, 0); }
             100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
         }
+        #qr-reader {
+            width: 100%;
+            border: 2px solid #f1f3f5;
+            border-radius: 8px;
+            overflow: hidden; /* Para que el video no se salga del borde redondeado */
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -126,24 +137,25 @@
                 this.barberData = null;
                 this.clientProfile = null;
                 this.bookingData = {};
+                this.profileUpdateData = {}; 
                 this.isTyping = false;
                 
                 this.chatId = null;
                 this.chatSubscription = null;
                 this.notificationSubscription = null;
+                this.qrScanner = null;
+                this.paymentDataToConfirm = null;
                 
-                // Propiedades para notificaciones
                 this.unreadCount = 0;
 
-                // Elementos de la UI
                 this.messagesContainer = document.getElementById('messagesContainer');
                 this.messageInput = document.getElementById('messageInput');
                 this.sendButton = document.getElementById('sendButton');
                 this.chatHeader = document.getElementById('chatHeader');
-                
-                // Elementos de notificaciones
                 this.notificationBadge = document.getElementById('notificationBadge');
                 this.messagesIconWrapper = document.getElementById('messagesIconWrapper');
+
+                this.mainMenuButton = `<div class="command-buttons-container" style="margin-top: 15px;"><button class="command-button" data-command="menu">↩️ Volver al Menú</button></div>`;
 
                 this.init();
             }
@@ -200,7 +212,7 @@
                 if (!button || button.disabled) return;
                 
                 const container = button.closest('.command-buttons-container');
-                if (container) {
+                if (container && !button.closest('.return-menu')) {
                    container.querySelectorAll('.command-button').forEach(btn => {
                        btn.disabled = true;
                        btn.style.cursor = 'not-allowed';
@@ -228,6 +240,11 @@
             }
             
             async processUserInput(input) {
+                if (this.qrScanner) {
+                    await this.qrScanner.stop().catch(e => console.log("Scanner already stopped."));
+                    this.qrScanner = null;
+                }
+                
                 if (this.currentFlow === 'live_chat') {
                     if (input === '/menu') {
                         this.addUserMessage("Volver al menú");
@@ -241,6 +258,20 @@
                 this.showTyping();
                 await new Promise(resolve => setTimeout(resolve, 600));
                 this.hideTyping();
+
+                if (input === 'menu') {
+                    this.bookingData = {}; 
+                    this.profileUpdateData = {};
+                    this.showClientMainMenu();
+                    return;
+                }
+
+                if (input.startsWith('seleccionar_barbero:')) {
+                    const barberName = input.split(':')[1];
+                    this.bookingData.barberName = barberName;
+                    await this.showServicesForBooking();
+                    return;
+                }
 
                 if (this.currentFlow === 'awaiting_code') {
                     await this.handleCodeEntry(input);
@@ -258,16 +289,26 @@
                          if (input === 'confirmar_reserva') {
                             await this.confirmAndCreateBooking();
                          } else {
-                            this.addBotMessage('<div class="bot-card"><p>Reserva cancelada. Volviendo al menú principal.</p></div>');
+                            this.addBotMessage(`<div class="bot-card"><p>Reserva cancelada.</p></div>`);
                             this.showClientMainMenu();
                          }
+                        return;
+                    case 'editing_profile_firstname':
+                        this.profileUpdateData.firstName = input;
+                        this.addBotMessage(`<div class="bot-card"><p>¡Entendido, ${input}!</p><p>Ahora, por favor, dime tu apellido.</p>${this.mainMenuButton}</div>`);
+                        this.currentFlow = 'editing_profile_lastname';
+                        return;
+                    case 'editing_profile_lastname':
+                        this.profileUpdateData.lastName = input;
+                        await this.updateClientProfile();
                         return;
                 }
                 
                 if (input.startsWith('reservar_servicio:')) {
                     const serviceName = input.split(':')[1];
-                    this.bookingData.service = this.barberData.services.find(s => s.name === serviceName);
-                    this.addBotMessage(`<div class="bot-card"><p>Has seleccionado: <strong>${this.bookingData.service.name}</strong> ($${this.bookingData.service.price}).</p><p>Por favor, elige una fecha (p. ej., "hoy", "mañana" o "25/12"):</p></div>`);
+                    const barberServices = this.barberData.services[this.bookingData.barberName] || [];
+                    this.bookingData.service = barberServices.find(s => s.name === serviceName);
+                    this.addBotMessage(`<div class="bot-card"><p>Has seleccionado: <strong>${this.bookingData.service.name}</strong> ($${this.bookingData.service.price}).</p><p>Por favor, elige una fecha (p. ej., "hoy", "mañana" o "25/12"):</p>${this.mainMenuButton}</div>`);
                     this.currentFlow = 'booking_date';
                     return;
                 }
@@ -277,21 +318,169 @@
                     case '/horario': await this.showAvailability(); break;
                     case '/reservar': await this.startBookingFlow(); break;
                     case '/hablar': await this.enterLiveChatMode(); break;
+                    case '/miperfil': await this.startProfileEditFlow(); break;
+                    case '/pagar_qr': await this.startQRScanner(); break;
                     case 'menu': this.showClientMainMenu(); break;
                     default:
-                        this.addBotMessage(`<div class="bot-card"><p>Lo siento, no entendí eso. Puedes usar los botones del menú.</p></div>`);
+                        this.addBotMessage(`<div class="bot-card"><p>Actualmente, no puedo responder de manera natural. Sin embargo, puedes explorar utilizando los botones del menú. 😀</p></div>`);
                         this.showClientMainMenu();
                         break;
                 }
+            }
+
+            // ===== NUEVAS FUNCIONES PARA EL ESCANEO Y PAGO QR =====
+
+            async startQRScanner() {
+                const scannerHTML = `
+                <div class="bot-card">
+                    <h3>Escanear Código QR</h3>
+                    <p>Apunta la cámara al código QR que te muestre tu barbero.</p>
+                    <div id="qr-reader"></div>
+                    <div class="command-buttons-container" style="margin-top: 15px;">
+                        <button class="command-button return full-width" data-command="menu">Cancelar</button>
+                    </div>
+                </div>`;
+                this.addBotMessage(scannerHTML);
+
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                const html5QrCode = new Html5Qrcode("qr-reader");
+                this.qrScanner = html5QrCode; 
+                
+                const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
+                    if (this.qrScanner) {
+                        await this.qrScanner.stop();
+                        this.qrScanner = null;
+                        await this.handleScannedQRCode(decodedText);
+                    }
+                };
+
+                const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+                html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback)
+                    .catch(err => {
+                        console.error("Error al iniciar el escaner QR", err)
+                        this.addBotMessage(`<div class="bot-card"><p>❌ No se pudo iniciar la cámara. Asegúrate de dar los permisos necesarios.</p></div>`);
+                        this.showClientMainMenu();
+                    });
+            }
+
+            async handleScannedQRCode(qrDataString) {
+                try {
+                    const paymentData = JSON.parse(qrDataString);
+                    if (paymentData.barber_id !== this.barberData.id) {
+                        this.addBotMessage(`<div class="bot-card"><p>⚠️ <strong>Error:</strong> Este código QR no pertenece a ${this.barberData.barber_shop_name}.</p></div>`);
+                        this.showClientMainMenu();
+                        return;
+                    }
+
+                    this.paymentDataToConfirm = paymentData;
+
+                    const confirmationHTML = `
+                    <div class="bot-card">
+                        <h3>Confirmar Pago</h3>
+                        <p>Estás a punto de registrar un pago para <strong>${this.barberData.barber_shop_name}</strong>.</p>
+                        <ul>
+                            <li><strong>Monto:</strong> ${paymentData.amount} Bs.</li>
+                            <li><strong>Por:</strong> ${paymentData.description}</li>
+                            <li><strong>Atendido por:</strong> ${paymentData.performer}</li>
+                        </ul>
+                        <p class="helper-text">Recuerda realizar el pago por tu método preferido (efectivo, transferencia, etc). Esto solo registra la transacción.</p>
+                        <div class="command-buttons-container">
+                            <button class="command-button confirm" onclick="app.confirmAndProcessPayment()">✅ Sí, Confirmar Pago</button>
+                            <button class="command-button cancel" data-command="menu">❌ Cancelar</button>
+                        </div>
+                    </div>`;
+                    this.addBotMessage(confirmationHTML);
+
+                } catch (error) {
+                    this.addBotMessage(`<div class="bot-card"><p>❌ <strong>Código QR no válido.</strong> No pude leer la información de pago.</p></div>`);
+                    this.showClientMainMenu();
+                }
+            }
+
+            async confirmAndProcessPayment() {
+                if (!this.paymentDataToConfirm) return;
+                
+                this.addUserMessage("Sí, Confirmar Pago");
+                this.showTyping();
+
+                const { amount, description, performer } = this.paymentDataToConfirm;
+
+                // 1. Insertar la transacción en la tabla
+                const { error: transactionError } = await supabase
+                    .from('transactions')
+                    .insert({
+                        barber_id: this.barberData.id,
+                        client_id: this.clientProfile.id,
+                        amount: amount,
+                        description: description,
+                        barber_name_performer: performer
+                    });
+
+                if (transactionError) {
+                    this.hideTyping();
+                    this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error al registrar la transacción.</p></div>`);
+                    console.error("Error inserting transaction:", transactionError);
+                    this.showClientMainMenu();
+                    return;
+                }
+
+                // 2. Llamar a la función RPC para actualizar el saldo del barbero
+                const { error: rpcError } = await supabase.rpc('increment_barber_balance', {
+                    barber_id_in: this.barberData.id,
+                    amount_in: parseFloat(amount)
+                });
+
+                this.hideTyping();
+
+                if (rpcError) {
+                    this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error al actualizar el saldo del barbero.</p></div>`);
+                    console.error("Error calling RPC:", rpcError);
+                } else {
+                    this.addBotMessage(`<div class="bot-card"><p>✅ <strong>¡Pago registrado con éxito!</strong> Gracias.</p></div>`);
+                }
+                
+                this.paymentDataToConfirm = null;
+                setTimeout(() => this.showClientMainMenu(), 2000);
+            }
+            
+            // ===== FIN DE LAS NUEVAS FUNCIONES =====
+            
+            async startProfileEditFlow() {
+                const currentName = `${this.clientProfile.first_name} ${this.clientProfile.last_name}`;
+                this.addBotMessage(`<div class="bot-card"><h3>📝 Editar Perfil</h3><p>Tu nombre actual es <strong>${currentName}</strong>.</p><p>Por favor, escribe tu nombre.</p>${this.mainMenuButton}</div>`);
+                this.currentFlow = 'editing_profile_firstname';
+            }
+
+            async updateClientProfile() {
+                this.showTyping();
+                const { firstName, lastName } = this.profileUpdateData;
+
+                const { error } = await supabase
+                    .from('clients')
+                    .update({ first_name: firstName, last_name: lastName })
+                    .eq('id', this.clientProfile.id);
+
+                this.hideTyping();
+
+                if (error) {
+                    console.error("Error updating profile:", error);
+                    this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error al actualizar tu perfil.</p>${this.mainMenuButton}</div>`);
+                } else {
+                    this.clientProfile.first_name = firstName;
+                    this.clientProfile.last_name = lastName;
+                    this.addBotMessage(`<div class="bot-card"><p>✅ ¡Perfecto, ${firstName}! Tu perfil ha sido actualizado.</p></div>`);
+                }
+
+                this.profileUpdateData = {};
+                setTimeout(() => this.showClientMainMenu(), 1000);
             }
 
             parseDateInput(input) {
                 const now = new Date();
                 now.setHours(0, 0, 0, 0);
 
-                if (input === 'hoy') {
-                    return now;
-                }
+                if (input === 'hoy') return now;
                 if (input === 'mañana') {
                     now.setDate(now.getDate() + 1);
                     return now;
@@ -302,9 +491,7 @@
                     const month = parseInt(parts[2], 10) - 1;
                     const year = now.getFullYear();
                     const date = new Date(year, month, day);
-                    if (date < now) {
-                        date.setFullYear(year + 1);
-                    }
+                    if (date < now) date.setFullYear(year + 1);
                     return date;
                 }
                 return null;
@@ -314,7 +501,7 @@
                 const selectedDate = this.parseDateInput(input);
 
                 if (!selectedDate || selectedDate < new Date().setHours(0, 0, 0, 0)) {
-                    this.addBotMessage('<div class="bot-card"><p>❌ Fecha no válida. Inténtalo de nuevo (p. ej., "hoy", "mañana" o "25/12").</p></div>');
+                    this.addBotMessage(`<div class="bot-card"><p>❌ Fecha no válida. Inténtalo de nuevo (p. ej., "hoy", "mañana" o "25/12").</p>${this.mainMenuButton}</div>`);
                     return;
                 }
 
@@ -328,110 +515,75 @@
             async showAvailableTimesForDate(date) {
                 const dayMapping = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
                 const dayKey = dayMapping[date.getDay()];
-                const barberSchedule = this.barberData.availability[dayKey] || [];
+                const barberSchedule = this.barberData.availability[this.bookingData.barberName][dayKey] || [];
 
                 if (barberSchedule.length === 0) {
-                    this.addBotMessage(`<div class="bot-card"><p>❌ El barbero no trabaja el ${date.toLocaleDateString()}. Por favor, elige otra fecha.</p></div>`);
+                    this.addBotMessage(`<div class="bot-card"><p>❌ ${this.bookingData.barberName} no trabaja el ${date.toLocaleDateString()}. Por favor, elige otra fecha.</p>${this.mainMenuButton}</div>`);
                     this.currentFlow = 'booking_date';
                     return;
                 }
 
-                const startOfDay = new Date(date);
-                startOfDay.setHours(0, 0, 0, 0);
-                const endOfDay = new Date(date);
-                endOfDay.setHours(23, 59, 59, 999);
+                const startOfDay = new Date(date); startOfDay.setHours(0, 0, 0, 0);
+                const endOfDay = new Date(date); endOfDay.setHours(23, 59, 59, 999);
 
-                const { data: existingBookings, error } = await supabase.from('bookings')
-                    .select('booking_date')
-                    .eq('barber_id', this.barberData.id)
-                    .in('status', ['pending', 'confirmed'])
-                    .gte('booking_date', startOfDay.toISOString())
-                    .lte('booking_date', endOfDay.toISOString());
+                const { data: existingBookings, error } = await supabase.from('bookings').select('booking_date').eq('barber_id', this.barberData.id).in('status', ['pending', 'confirmed']).gte('booking_date', startOfDay.toISOString()).lte('booking_date', endOfDay.toISOString());
 
                 if (error) {
-                    console.error("Error fetching existing bookings:", error);
-                    this.addBotMessage('<div class="bot-card"><p>⚠️ Error al verificar disponibilidad. Intenta nuevamente.</p></div>');
+                    this.addBotMessage(`<div class="bot-card"><p>⚠️ Error al verificar disponibilidad.</p>${this.mainMenuButton}</div>`);
                     this.showClientMainMenu();
                     return;
                 }
                 
                 const bookedHours = existingBookings.map(b => new Date(b.booking_date).getHours());
-                
                 let availableHours = barberSchedule.filter(hour => !bookedHours.includes(hour));
                 
                 const now = new Date();
-                const isToday = date.getFullYear() === now.getFullYear() &&
-                              date.getMonth() === now.getMonth() &&
-                              date.getDate() === now.getDate();
+                const isToday = date.toDateString() === now.toDateString();
 
                 if (isToday) {
-                    const currentHour = now.getHours();
-                    availableHours = availableHours.filter(hour => hour > currentHour);
+                    availableHours = availableHours.filter(hour => hour > now.getHours());
                 }
                 
                 if (availableHours.length === 0) {
-                    this.addBotMessage(`<div class="bot-card"><p>❌ <strong>No hay cupos disponibles</strong> para el ${date.toLocaleDateString()}.</p><p>💡 Todos los horarios están ocupados. Por favor, elige otra fecha.</p></div>`);
+                    this.addBotMessage(`<div class="bot-card"><p>❌ <strong>No hay cupos disponibles</strong> para el ${date.toLocaleDateString()}.</p><p>Por favor, elige otra fecha.</p>${this.mainMenuButton}</div>`);
                     this.currentFlow = 'booking_date';
                     return;
                 }
 
-                const totalSlots = barberSchedule.length;
-                const availableSlots = availableHours.length;
-                const occupancyRate = Math.round(((totalSlots - availableSlots) / totalSlots) * 100);
-
-                let availabilityMessage = '';
-                if (occupancyRate > 80) {
-                    availabilityMessage = `<p style="color: #dc3545; font-weight: bold;">⚠️ Alta demanda - Quedan pocos cupos</p>`;
-                } else if (occupancyRate > 50) {
-                    availabilityMessage = `<p style="color: #ffc107; font-weight: bold;">📈 Demanda media</p>`;
-                } else {
-                    availabilityMessage = `<p style="color: #28a745; font-weight: bold;">✅ Buena disponibilidad</p>`;
-                }
-
-                const timeButtons = availableHours.map(hour => 
-                    `<button class="command-button" data-command="reservar_hora:${hour}:00">${String(hour).padStart(2, '0')}:00</button>`
-                ).join('');
-
-                this.addBotMessage(`<div class="bot-card"><h3>⏰ Horas disponibles para el ${date.toLocaleDateString()}</h3>${availabilityMessage}<p><strong>Disponibilidad:</strong> ${availableSlots}/${totalSlots} horarios libres</p><div class="command-buttons-container">${timeButtons}<button class="command-button full-width return" data-command="cancelar_reserva">📅 Elegir otra fecha</button></div></div>`);
+                const timeButtons = availableHours.map(hour => `<button class="command-button" data-command="reservar_hora:${hour}:00">${String(hour).padStart(2, '0')}:00</button>`).join('');
+                this.addBotMessage(`<div class="bot-card"><h3>⏰ Horas disponibles para el ${date.toLocaleDateString()}</h3><div class="command-buttons-container">${timeButtons}<button class="command-button" data-command="menu">↩️ Volver al Menú</button></div></div>`);
                 this.currentFlow = 'booking_time';
             }
 
             async handleTimeSelection(input) {
                 if (!input.startsWith('reservar_hora:')) {
-                    this.addBotMessage('<div class="bot-card"><p>Selección no válida. Por favor, usa uno de los botones.</p></div>');
+                    this.addBotMessage(`<div class="bot-card"><p>Selección no válida. Por favor, usa uno de los botones.</p>${this.mainMenuButton}</div>`);
                     await this.showAvailableTimesForDate(this.bookingData.date);
                     return;
                 }
 
                 const time = input.split(':')[1];
-                const hour = parseInt(time, 10);
-
                 const finalTimestamp = new Date(this.bookingData.date);
-                finalTimestamp.setHours(hour, 0, 0, 0);
+                finalTimestamp.setHours(parseInt(time, 10), 0, 0, 0);
                 this.bookingData.finalTimestamp = finalTimestamp;
                 
-                const confirmationHTML = `<div class="bot-card"><h3>Confirmar Reserva</h3><p>Por favor, revisa los detalles de tu cita:</p><ul><li><strong>Servicio:</strong> ${this.bookingData.service.name}</li><li><strong>Precio:</strong> $${this.bookingData.service.price}</li><li><strong>Fecha:</strong> ${finalTimestamp.toLocaleDateString()}</li><li><strong>Hora:</strong> ${finalTimestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</li></ul><div class="command-buttons-container"><button class="command-button" data-command="confirmar_reserva">✅ Confirmar</button><button class="command-button" data-command="cancelar_reserva">❌ Cancelar</button></div></div>`;
+                const confirmationHTML = `<div class="bot-card"><h3>Confirmar Reserva</h3><p>Por favor, revisa los detalles de tu cita:</p><ul><li><strong>Barbero:</strong> ${this.bookingData.barberName}</li><li><strong>Servicio:</strong> ${this.bookingData.service.name}</li><li><strong>Precio:</strong> $${this.bookingData.service.price}</li><li><strong>Fecha:</strong> ${finalTimestamp.toLocaleDateString()}</li><li><strong>Hora:</strong> ${finalTimestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</li></ul><div class="command-buttons-container"><button class="command-button confirm" data-command="confirmar_reserva">✅ Confirmar</button><button class="command-button cancel" data-command="cancelar_reserva">❌ Cancelar</button></div></div>`;
                 this.addBotMessage(confirmationHTML);
                 this.currentFlow = 'booking_confirmation';
             }
             
             async confirmAndCreateBooking() {
                 this.showTyping();
-                const bookingPayload = { barber_id: this.barberData.id, client_id: this.clientProfile.id, service_name: this.bookingData.service.name, price: this.bookingData.service.price, booking_date: this.bookingData.finalTimestamp.toISOString(), status: 'confirmed' };
-                const { error } = await supabase.from('bookings').insert(bookingPayload);
+                const payload = { barber_id: this.barberData.id, client_id: this.clientProfile.id, service_name: this.bookingData.service.name, price: this.bookingData.service.price, booking_date: this.bookingData.finalTimestamp.toISOString(), status: 'confirmed', barber_name: this.bookingData.barberName };
+                const { error } = await supabase.from('bookings').insert(payload);
                 this.hideTyping();
-                if (error) { console.error("Error creating booking:", error); this.addBotMessage('<div class="bot-card"><p>Lo siento, ocurrió un error al crear tu reserva. Inténtalo de nuevo.</p></div>');
-                } else { this.addBotMessage('<div class="bot-card"><p>✅ ¡Tu reserva ha sido confirmada con éxito!</p></div>'); }
-                this.bookingData = {};
-                this.showClientMainMenu();
-            }
-
-            async getAndSetClientSession(clientId) {
-                try {
-                    await supabase.auth.signInAnonymously({ options: { data: { user_type: 'client', client_id: clientId } } });
-                } catch (error) {
-                    console.warn("Error no crítico en auth:", error);
+                if (error) {
+                    this.addBotMessage(`<div class="bot-card"><p>Lo siento, ocurrió un error al crear tu reserva.</p>${this.mainMenuButton}</div>`);
+                } else {
+                    this.addBotMessage('<div class="bot-card"><p>✅ ¡Tu reserva ha sido confirmada con éxito!</p></div>');
                 }
+                this.bookingData = {};
+                setTimeout(() => this.showClientMainMenu(), 1500);
             }
 
             async checkConnection() {
@@ -449,7 +601,7 @@
                         this.clientProfile = client;
                         await this.getOrCreateChatSession();
                         this.updateHeader();
-                        this.addBotMessage(`<div class="bot-card"><h3>¡Hola de nuevo! 👋</h3><p>Estás conectado con <strong>${this.barberData.barber_shop_name}</strong>.</p></div>`);
+                        this.addBotMessage(`<div class="bot-card"><h3>¡Hola de nuevo, ${this.clientProfile.first_name}! 👋</h3><p>Estás conectado con <strong>${this.barberData.barber_shop_name}</strong>.</p></div>`);
                         this.showClientMainMenu();
                         this.subscribeToNotifications();
                     } else {
@@ -489,78 +641,112 @@
             async getOrCreateAnonymousClient() {
                 let clientId = localStorage.getItem('client_id');
                 if (clientId) {
-                    const { data: client, error } = await supabase.from('clients').select('id').eq('id', clientId).single();
-                    if (client) { this.clientProfile = { id: client.id }; await this.getAndSetClientSession(this.clientProfile.id); return; }
+                    const { data: client, error } = await supabase.from('clients').select('*').eq('id', clientId).single();
+                    if (client) { this.clientProfile = client; return; }
                 }
                 const { data, error } = await supabase.from('clients').insert({ first_name: 'Cliente', last_name: `Anónimo-${Math.random().toString(36).substring(2, 8)}`, linked_barber_id: this.barberData.id }).select().single();
-                if (data) { this.clientProfile = data; localStorage.setItem('client_id', this.clientProfile.id); await this.getAndSetClientSession(this.clientProfile.id);
-                } else { console.error("Error creando cliente:", error); this.clientProfile = { id: 'temp-' + Date.now(), first_name: 'Cliente', last_name: 'Temporal' }; }
+                if (data) { this.clientProfile = data; localStorage.setItem('client_id', this.clientProfile.id); } 
+                else { console.error("Error creating client:", error); }
             }
 
             async getOrCreateChatSession() {
                 if (!this.clientProfile) return;
                 const { data, error } = await supabase.from('chats').select('id').eq('barber_id', this.barberData.id).eq('client_id', this.clientProfile.id).single();
-                if (data) { this.chatId = data.id;
-                } else {
+                if (data) { this.chatId = data.id; } 
+                else {
                     const { data: newChat, error: newChatError } = await supabase.from('chats').insert({ barber_id: this.barberData.id, client_id: this.clientProfile.id }).select('id').single();
-                    if (newChat) this.chatId = newChat.id; else console.error("Error creando chat:", newChatError);
+                    if (newChat) this.chatId = newChat.id; else console.error("Error creating chat:", newChatError);
                 }
             }
 
             updateHeader() {
-                this.chatHeader.innerHTML = `
-                    <div id="header-title">
-                        <h1>${this.barberData.barber_shop_name}</h1>
-                        <p>Asistente de Citas</p>
-                    </div>
-                    <div class="header-icons">
-                        <div class="icon-wrapper" id="messagesIconWrapper" title="Ver mensajes">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 10H6v-2h12v2zm0-4H6V6h12v2z"></path></svg>
-                            <span class="notification-badge" id="notificationBadge"></span>
-                        </div>
-                    </div>`;
+                this.chatHeader.innerHTML = `<div id="header-title"><h1>${this.barberData.barber_shop_name}</h1><p>Asistente de Citas</p></div><div class="header-icons"><div class="icon-wrapper" id="messagesIconWrapper" title="Ver mensajes"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 10H6v-2h12v2zm0-4H6V6h12v2z"></path></svg><span class="notification-badge" id="notificationBadge"></span></div></div>`;
                 this.notificationBadge = document.getElementById('notificationBadge');
                 this.messagesIconWrapper = document.getElementById('messagesIconWrapper');
                 this.messagesIconWrapper.addEventListener('click', () => {
-                    if (this.unreadCount > 0) {
-                        this.enterLiveChatMode();
-                    }
+                    if (this.unreadCount > 0) this.enterLiveChatMode();
                 });
             }
 
             showClientMainMenu() {
-                const menuHTML = `<div class="bot-card"><h3>Menú Principal</h3><p>¿Cómo puedo ayudarte hoy?</p><div class="command-buttons-container"><button class="command-button" data-command="/reservar">📅 Hacer una Reserva</button><button class="command-button" data-command="/servicios">🛠️ Ver Servicios</button><button class="command-button" data-command="/horario">⏰ Ver Horario</button><button class="command-button" data-command="/hablar">💬 Hablar con el Barbero</button></div></div>`;
+                const menuHTML = `<div class="bot-card"><h3>Menú Principal</h3><p>¿Cómo puedo ayudarte hoy?</p><div class="command-buttons-container">
+                <button class="command-button" data-command="/reservar">📅 Hacer una Reserva</button>
+                <button class="command-button" data-command="/servicios">🛠️ Ver Servicios</button>
+                <button class="command-button" data-command="/horario">⏰ Ver Horario</button>
+                <button class="command-button" data-command="/miperfil">👤 Editar Perfil</button>
+                <button class="command-button" data-command="/hablar">💬 Hablar con el Barbero</button>
+                <button class="command-button full-width" style="background-color: #28a745; color: white;" data-command="/pagar_qr">📲 Pagar con QR</button>
+                </div></div>`;
                 this.addBotMessage(menuHTML);
                 this.currentFlow = 'main_menu';
+            }
+
+            async showServicesForBooking() {
+                const barberServices = this.barberData.services[this.bookingData.barberName] || [];
+                
+                if (barberServices.length === 0) {
+                    this.addBotMessage(`<div class="bot-card"><p>Lo siento, ${this.bookingData.barberName} no tiene servicios disponibles para reservar.</p>${this.mainMenuButton}</div>`);
+                    this.showClientMainMenu();
+                    return;
+                }
+
+                const buttonsHTML = barberServices.map(s => `<button class="command-button" data-command="reservar_servicio:${s.name}">${s.name} ($${s.price})</button>`).join('');
+                this.addBotMessage(`<div class="bot-card"><h3>Selecciona un servicio con ${this.bookingData.barberName}</h3><div class="command-buttons-container">${buttonsHTML}${this.mainMenuButton}</div></div>`);
+                this.currentFlow = 'booking_service';
             }
             
             showServices() {
                 let servicesHTML = '<p>Este barbero aún no ha agregado servicios.</p>';
-                if (this.barberData.services && this.barberData.services.length > 0) { servicesHTML = this.barberData.services.map(svc => `<li><span>${svc.name}</span><strong>$${svc.price}</strong></li>`).join(''); }
-                this.addBotMessage(`<div class="bot-card"><h3>🛠️ Servicios Disponibles</h3><ul>${servicesHTML}</ul></div>`);
+                if (this.barberData.services && Object.keys(this.barberData.services).length > 0) {
+                    let allServices = [];
+                    Object.values(this.barberData.services).forEach(serviceList => {
+                        allServices = allServices.concat(serviceList);
+                    });
+                    servicesHTML = allServices.map(svc => `<li><span>${svc.name}</span><strong>$${svc.price}</strong></li>`).join('');
+                }
+                this.addBotMessage(`<div class="bot-card"><h3>🛠️ Servicios Disponibles</h3><ul>${servicesHTML}</ul>${this.mainMenuButton}</div>`);
             }
 
             showAvailability() {
                 const days = { mon: 'Lunes', tue: 'Martes', wed: 'Miércoles', thu: 'Jueves', fri: 'Viernes', sat: 'Sábado', sun: 'Domingo' };
-                let availabilityHTML = Object.keys(days).map(key => {
-                    const hours = this.barberData.availability[key] || [];
-                    const timeRange = hours.length > 0 ? hours.map(h => `${h}:00`).join(', ') : 'Cerrado';
-                    return `<li><span>${days[key]}</span><span>${timeRange}</span></li>`;
-                }).join('');
-                this.addBotMessage(`<div class="bot-card"><h3>⏰ Horario de Atención</h3><ul>${availabilityHTML}</ul></div>`);
+                let availabilityHTML = '';
+                Object.keys(this.barberData.availability).forEach(barberName => {
+                    availabilityHTML += `<h4>${barberName}</h4>`;
+                    const schedule = this.barberData.availability[barberName];
+                    let barberScheduleHTML = Object.keys(days).map(key => {
+                        const hours = schedule[key] || [];
+                        const timeRange = hours.length > 0 ? hours.map(h => `${h}:00`).join(', ') : 'Cerrado';
+                        return `<li><span>${days[key]}</span><span>${timeRange}</span></li>`;
+                    }).join('');
+                    availabilityHTML += `<ul>${barberScheduleHTML}</ul>`;
+                });
+                this.addBotMessage(`<div class="bot-card"><h3>⏰ Horario de Atención</h3>${availabilityHTML}${this.mainMenuButton}</div>`);
             }
 
             async startBookingFlow() {
-                if (!this.barberData.services || this.barberData.services.length === 0) { this.addBotMessage('<div class="bot-card"><p>Lo siento, no hay servicios disponibles para reservar en este momento.</p></div>'); return; }
-                const buttonsHTML = this.barberData.services.map(s => `<button class="command-button" data-command="reservar_servicio:${s.name}">${s.name} ($${s.price})</button>`).join('');
-                this.addBotMessage(`<div class="bot-card"><h3>Selecciona un servicio para tu reserva</h3><div class="command-buttons-container">${buttonsHTML}</div></div>`);
-                this.currentFlow = 'booking_service';
+                if (!this.barberData.services) { 
+                    this.addBotMessage(`<div class="bot-card"><p>Lo siento, no hay servicios disponibles para reservar.</p>${this.mainMenuButton}</div>`); 
+                    return; 
+                }
+                
+                const barbers = Object.keys(this.barberData.availability);
+
+                if (barbers.length > 1) {
+                    const barberButtons = barbers.map(name => 
+                        `<button class="command-button" data-command="seleccionar_barbero:${name}">${name}</button>`
+                    ).join('');
+                    this.addBotMessage(`<div class="bot-card"><h3>Selecciona un barbero</h3><div class="command-buttons-container">${barberButtons}${this.mainMenuButton}</div></div>`);
+                    this.currentFlow = 'booking_barber';
+                } else {
+                    this.bookingData.barberName = barbers[0];
+                    await this.showServicesForBooking(); 
+                }
             }
             
             async enterLiveChatMode() {
                 this.currentFlow = 'live_chat';
                 this.messagesContainer.innerHTML = ''; 
-                this.addBotMessage('<div class="bot-card"><p>Ahora estás chateando directamente con tu barbero. Escribe /menu para volver al menú principal.</p></div>');
+                this.addBotMessage('<div class="bot-card"><p>Ahora estás chateando directamente con tu barbero. Escribe <strong>/menu</strong> para volver al menú principal.</p></div>');
                 this.resetUnreadCount();
 
                 const { data: messages, error } = await supabase.from('messages').select('*').eq('chat_id', this.chatId).order('created_at');
@@ -571,17 +757,15 @@
                 this.chatSubscription = supabase.channel(`chat_${this.chatId}`)
                     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${this.chatId}`},
                         payload => {
-                            if (payload.new.sender_type === 'barber') {
-                                this.renderMessage(payload.new);
-                            }
+                            if (payload.new.sender_type === 'barber') this.renderMessage(payload.new);
                         }
                     ).subscribe();
             }
 
             async sendRealtimeMessage(text) {
-                const messagePayload = { chat_id: this.chatId, sender_id: this.clientProfile.id, sender_type: 'client', content: text };
-                this.renderMessage({ ...messagePayload, sender_type: 'client', content: text });
-                await supabase.from('messages').insert(messagePayload);
+                const payload = { chat_id: this.chatId, sender_id: this.clientProfile.id, sender_type: 'client', content: text };
+                this.renderMessage({ ...payload });
+                await supabase.from('messages').insert(payload);
             }
 
             addMessage(text, sender) { this.renderMessage({ text, sender, time: new Date() }); }
@@ -591,20 +775,23 @@
             renderMessage(message, isNew = true) {
                 const messageDiv = document.createElement('div');
                 let senderClass = 'bot';
-                if (message.sender === 'user' || message.sender_type === 'client') { senderClass = 'user'; }
+                if (message.sender === 'user' || message.sender_type === 'client') senderClass = 'user';
                 messageDiv.className = `message ${senderClass}`;
                 const content = message.text || message.content;
                 const time = new Date(message.time || message.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 messageDiv.innerHTML = `<div class="message-content">${content}</div><div class="message-time">${time}</div>`;
                 this.messagesContainer.appendChild(messageDiv);
-                if (isNew) { this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight; }
+                if (isNew) this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
             }
 
             showTyping() { if (this.isTyping) return; this.isTyping = true; const typingDiv = document.createElement('div'); typingDiv.className = 'message bot'; typingDiv.id = 'typing-indicator'; typingDiv.innerHTML = `<div class="message-content"><div class="typing"><span></span><span></span><span></span></div></div>`; this.messagesContainer.appendChild(typingDiv); this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight; }
             hideTyping() { this.isTyping = false; const indicator = document.getElementById('typing-indicator'); if (indicator) indicator.remove(); }
         }
 
-        document.addEventListener('DOMContentLoaded', () => new ClientChatApp());
+        let app;
+        document.addEventListener('DOMContentLoaded', () => {
+            app = new ClientChatApp();
+        });
     </script>
 </body>
 </html>
