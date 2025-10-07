@@ -160,6 +160,10 @@
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"></path></svg>
                     <span class="notification-badge" id="bookingsBadge"></span>
                 </div>
+                <div class="icon-wrapper" id="financeIconWrapper" title="Ver Finanzas">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c2.14-.46 3.5-1.78 3.5-3.97 0-2.02-1.31-3.32-4.2-4.04z"></path></svg>
+                    <span class="notification-badge" id="financeBadge"></span>
+                </div>
             </div>
         </div>
 
@@ -198,10 +202,12 @@
             
             this.unreadCounts = {};
             this.newBookingsCount = 0;
+            this.newTransactionsCount = 0;
 
             this.chatSubscription = null;
             this.notificationsSubscription = null;
             this.bookingsSubscription = null;
+            this.transactionsSubscription = null;
 
             this.messagesContainer = document.getElementById('messagesContainer');
             this.messageInput = document.getElementById('messageInput');
@@ -213,8 +219,10 @@
 
             this.chatsBadge = document.getElementById('chatsBadge');
             this.bookingsBadge = document.getElementById('bookingsBadge');
+            this.financeBadge = document.getElementById('financeBadge');
             this.chatsIconWrapper = document.getElementById('chatsIconWrapper');
             this.bookingsIconWrapper = document.getElementById('bookingsIconWrapper');
+            this.financeIconWrapper = document.getElementById('financeIconWrapper');
 
             this.init();
         }
@@ -226,9 +234,16 @@
             this.backButton.addEventListener('click', () => this.handleBack());
 
             this.chatsIconWrapper.addEventListener('click', () => this.showClientChats());
+            
             this.bookingsIconWrapper.addEventListener('click', () => {
                 this.showAllBookings();
                 this.newBookingsCount = 0;
+                this.updateBadges();
+            });
+
+            this.financeIconWrapper.addEventListener('click', () => {
+                this.showFinanceMenu();
+                this.newTransactionsCount = 0;
                 this.updateBadges();
             });
 
@@ -249,6 +264,13 @@
                 this.bookingsBadge.classList.add('visible');
             } else {
                 this.bookingsBadge.classList.remove('visible');
+            }
+
+            if (this.newTransactionsCount > 0) {
+                this.financeBadge.textContent = this.newTransactionsCount > 9 ? '9+' : this.newTransactionsCount;
+                this.financeBadge.classList.add('visible');
+            } else {
+                this.financeBadge.classList.remove('visible');
             }
         }
 
@@ -813,11 +835,9 @@
             document.getElementById(`end-hour-${dayKey}`).value = '18';
         }
 
-        // ===== NUEVAS FUNCIONES PARA EL SISTEMA DE PAGOS =====
-        
         async showFinanceMenu() {
             this.showTyping();
-            await this.refreshProfileFromDB(); // Aseguramos tener el saldo más reciente
+            await this.refreshProfileFromDB(); 
 
             const { data: transactions, error } = await supabase
                 .from('transactions')
@@ -926,9 +946,6 @@
             this.addBotMessage(qrCodeHTML);
         }
 
-        // ===== FIN DE NUEVAS FUNCIONES =====
-
-
         async addService(name, price) {
             const barberName = this.userData.selectedBarber;
             const p = parseFloat(price);
@@ -1001,6 +1018,7 @@
                 this.currentFlow = 'authenticated'; 
                 this.subscribeToNotifications(); 
                 this.subscribeToBookings();
+                this.subscribeToTransactions();
             } else { 
                 this.startWelcomeFlow(); 
             } 
@@ -1025,7 +1043,7 @@
                 availability: initialAvailability,
                 public_code: code,
                 is_team_account: false,
-                balance: 0 // Campo añadido para la nueva función
+                balance: 0
             }]); 
         }
 
@@ -1036,6 +1054,7 @@
             if (this.notificationsSubscription) { this.notificationsSubscription.unsubscribe(); this.notificationsSubscription = null; } 
             if (this.bookingsSubscription) { this.bookingsSubscription.unsubscribe(); this.bookingsSubscription = null; } 
             if (this.chatSubscription) { this.chatSubscription.unsubscribe(); this.chatSubscription = null; } 
+            if (this.transactionsSubscription) { this.transactionsSubscription.unsubscribe(); this.transactionsSubscription = null; }
             this.currentUser = null; this.barberProfile = null; this.userData = {}; this.addBotMessage('<div class="bot-card"><p>¡Hasta pronto! Tu sesión se ha cerrado de forma segura. 👋</p></div>'); 
             setTimeout(() => { this.messagesContainer.innerHTML = ''; this.startWelcomeFlow(); }, 1500); 
         }
@@ -1056,6 +1075,7 @@
                     } 
                 }).subscribe(); 
         }
+
         async subscribeToBookings() {
             if (this.bookingsSubscription || !this.barberProfile) return;
             this.bookingsSubscription = supabase
@@ -1071,6 +1091,30 @@
                 })
                 .subscribe();
         }
+
+        async subscribeToTransactions() {
+            if (this.transactionsSubscription || !this.barberProfile) return;
+            
+            this.transactionsSubscription = supabase
+                .channel(`barber_transactions_${this.barberProfile.id}`)
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'transactions',
+                    filter: `barber_id=eq.${this.barberProfile.id}`
+                }, async (payload) => {
+                    this.newTransactionsCount++;
+                    this.updateBadges();
+
+                    await this.refreshProfileFromDB();
+
+                    if (document.querySelector('[data-command="/finanzas"]')) {
+                         this.addBotMessage(`<div class="bot-card" style="border-left: 4px solid #28a745;"><p><strong>¡Nuevo pago recibido!</strong> Tu saldo ha sido actualizado.</p></div>`);
+                    }
+                })
+                .subscribe();
+        }
+        
         async showClientChats() { 
             const { data: chats, error } = await supabase.from('chats').select(`id, clients (id, first_name, last_name)`).eq('barber_id', this.barberProfile.id); 
             if (error) { console.error(error); return; } 
@@ -1094,6 +1138,7 @@
             } 
             this.switchView('clientChatsView'); 
         }
+
         async openChat(chatId, clientId, clientName) { 
             if (this.unreadCounts[chatId]) {
                 delete this.unreadCounts[chatId];
@@ -1111,6 +1156,7 @@
             this.singleChatMessages.scrollTop = this.singleChatMessages.scrollHeight; 
             this.subscribeToChatChannel(chatId); 
         }
+
         subscribeToChatChannel(chatId) { 
             if (this.chatSubscription) this.chatSubscription.unsubscribe(); 
             this.chatSubscription = supabase.channel(`chat_${chatId}`)
@@ -1118,6 +1164,7 @@
                     if (payload.new.sender_type === 'client') this.renderMessage(payload.new, this.singleChatMessages); 
                 }).subscribe(); 
         }
+        
         async sendClientMessage(text) { 
             if (!this.activeChat.id) return; 
             const messagePayload = { chat_id: this.activeChat.id, sender_type: 'barber', sender_id: this.barberProfile.id, content: text }; 
