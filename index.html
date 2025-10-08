@@ -248,7 +248,74 @@
             });
 
             await this.checkAuthState();
+
+            // --- MEJORA AÑADIDA ---
+            // Verifica si el navegador soporta Service Workers y Push API
+            if ('serviceWorker' in navigator && 'PushManager' in window) {
+              this.registerServiceWorker();
+            }
         }
+
+        // --- INICIO: CÓDIGO AÑADIDO PARA NOTIFICACIONES PUSH ---
+        async registerServiceWorker() {
+            // Registra el Service Worker
+            const swRegistration = await navigator.serviceWorker.register('/sw.js');
+            
+            // Pide permiso al usuario
+            const permission = await window.Notification.requestPermission();
+            if (permission !== 'granted') {
+              console.log('Permiso de notificación no concedido.');
+              return;
+            }
+
+            // Obtiene la suscripción push
+            let pushSubscription = await swRegistration.pushManager.getSubscription();
+            if (pushSubscription === null) {
+              // Si no existe, crea una nueva
+              const vapidPublicKey = 'BJCOJ2WGEu7_29mhcE56t5zkmkmO2phKSVEELfWjTVe1RtmeZOZ5LWZfMyNWpWo7q7jNhBqezFf5MQFNq9NYSqA'; // Tu clave VAPID pública
+              pushSubscription = await swRegistration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
+              });
+            }
+
+            // Guarda la suscripción en la base de datos para este barbero
+            await this.savePushSubscription(pushSubscription);
+        }
+
+        // Función de utilidad para convertir la clave VAPID
+        urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+              outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+
+        async savePushSubscription(subscription) {
+            // Nos aseguramos de que el perfil del barbero ya se haya cargado
+            if (!this.barberProfile) {
+                console.warn("El perfil del barbero no está disponible para guardar la suscripción push.");
+                return;
+            }
+            
+            // Añade o actualiza la suscripción en el perfil del barbero
+            const { error } = await supabase
+              .from('barbers')
+              .update({ push_subscription: subscription })
+              .eq('id', this.barberProfile.id);
+
+            if (error) {
+              console.error('Error al guardar la suscripción push:', error);
+            } else {
+              console.log('Suscripción push guardada con éxito.');
+            }
+        }
+        // --- FIN: CÓDIGO AÑADIDO ---
+
 
         updateBadges() {
             const totalUnread = Object.values(this.unreadCounts).reduce((sum, count) => sum + count, 0);
