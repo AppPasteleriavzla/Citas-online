@@ -298,26 +298,38 @@
             }
             return outputArray;
         }
+// --- NUEVA VERSIÓN PARA DEPURACIÓN ---
+async savePushSubscription(subscription) {
+    console.log("Intentando guardar la suscripción push...");
 
-        async savePushSubscription(subscription, isSilent) {
-            if (!this.barberProfile) {
-                console.warn("El perfil del barbero no está disponible para guardar la suscripción push.");
-                return;
-            }
-            
-            const { error } = await supabase
-              .from('barbers')
-              .update({ push_subscription: subscription })
-              .eq('id', this.barberProfile.id);
+    if (!this.barberProfile) {
+        console.error("¡ERROR CRÍTICO! La función savePushSubscription se llamó, pero 'this.barberProfile' es null. Esto indica una condición de carrera.");
+        return;
+    }
+    
+    console.log("Perfil del barbero encontrado. ID:", this.barberProfile.id);
+    console.log("Datos de la suscripción a guardar:", subscription);
 
-            if (error) {
-              if (!isSilent) this.addBotMessage('<div class="bot-card"><p>❌ Hubo un error al guardar tu suscripción.</p></div>');
-              console.error('Error al guardar la suscripción push:', error);
-            } else {
-              if (!isSilent) this.addBotMessage('<div class="bot-card"><p>✅ ¡Perfecto! Ya estás suscrito a las notificaciones.</p></div>');
-              console.log('Suscripción push guardada con éxito.');
-            }
-        }
+    // Añadimos .select() al final para que Supabase nos devuelva la fila actualizada.
+    // Esto es CLAVE para diagnosticar problemas de RLS.
+    const { data, error } = await supabase
+      .from('barbers')
+      .update({ push_subscription: subscription })
+      .eq('id', this.barberProfile.id)
+      .select();
+
+    if (error) {
+        console.error('Error de Supabase al intentar guardar la suscripción:', error);
+        alert(`Error al guardar la suscripción: ${error.message}`);
+    } else if (data && data.length > 0) {
+        console.log('✅ ¡ÉXITO! Suscripción guardada en la BD. Datos devueltos:', data);
+        alert('¡Notificaciones activadas y guardadas correctamente!');
+    } else {
+        console.warn("⚠️ ATENCIÓN: La operación para guardar la suscripción no devolvió datos. Esto es un síntoma claro de que una Política de Seguridad a Nivel de Fila (RLS) está bloqueando la actualización silenciosamente.");
+        alert("La suscripción no se pudo guardar. Revisa la consola (F12) para ver el aviso sobre RLS.");
+    }
+}
+     
         // --- FIN: CÓDIGO MODIFICADO ---
 
 
@@ -1257,3 +1269,4 @@
 </script>
 </body>
 </html>
+
