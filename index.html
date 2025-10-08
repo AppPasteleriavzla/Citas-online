@@ -257,36 +257,38 @@
         }
 
         // --- INICIO: CÓDIGO MODIFICADO PARA NOTIFICACIONES PUSH ---
-        async registerServiceWorker(isSilent = false) {
-            if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-                if (!isSilent) this.addBotMessage('<div class="bot-card"><p>❌ Tu navegador no es compatible con las notificaciones push.</p></div>');
-                return;
-            }
+        // REEMPLAZA LA FUNCIÓN ANTIGUA CON ESTA
+async registerServiceWorker() {
+    this.addBotMessage('<div class="bot-card"><p><strong>[LOG]</strong> Iniciando registro del Service Worker...</p></div>');
 
-            // Esta llamada pide permiso al usuario si no se ha concedido/denegado antes.
-            // Si ya se eligió una opción, devuelve esa opción sin preguntar.
-            const permission = await window.Notification.requestPermission();
-            
-            if (permission === 'granted') {
-                if (!isSilent) this.addBotMessage('<div class="bot-card"><p>¡Permiso concedido! 👍 Procediendo a configurar la suscripción...</p></div>');
-                
-                const swRegistration = await navigator.serviceWorker.register('/sw.js');
-                let pushSubscription = await swRegistration.pushManager.getSubscription();
-                
-                if (pushSubscription === null) {
-                  const vapidPublicKey = 'BJCOJ2WGEu7_29mhcE56t5zkmkmO2phKSVEELfWjTVe1RtmeZOZ5LWZfMyNWpWo7q7jNhBqezFf5MQFNq9NYSqA'; // Tu clave VAPID pública
-                  pushSubscription = await swRegistration.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
-                  });
-                }
-                
-                await this.savePushSubscription(pushSubscription, isSilent);
+    const swRegistration = await navigator.serviceWorker.register('/sw.js');
+    
+    const permission = await window.Notification.requestPermission();
+    if (permission !== 'granted') {
+      this.addBotMessage('<div class="bot-card" style="background-color: #ffdddd;"><p><strong>[ERROR]</strong> Permiso de notificación no concedido. No se pueden activar las notificaciones.</p></div>');
+      return;
+    }
 
-            } else {
-                if (!isSilent) this.addBotMessage('<div class="bot-card"><p>⚠️ Has denegado el permiso para las notificaciones. Para activarlas, tendrás que ir a la configuración de tu navegador y permitir las notificaciones para este sitio.</p></div>');
-            }
-        }
+    // Este es el mensaje que ya veías en tu captura
+    this.addBotMessage('<div class="bot-card"><p>✅ ¡Permiso concedido! 👍<br>Procediendo a configurar la suscripción...</p></div>');
+
+    let pushSubscription = await swRegistration.pushManager.getSubscription();
+    if (pushSubscription === null) {
+      this.addBotMessage('<div class="bot-card"><p><strong>[LOG]</strong> No se encontró suscripción existente. Creando una nueva...</p></div>');
+      const vapidPublicKey = 'BJCOJ2WGEu7_29mhcE56t5zkmkmO2phKSVEELfWjTVe1RtmeZOZ5LWZfMyNWpWo7q7jNhBqezFf5MQFNq9NYSqA';
+      try {
+          pushSubscription = await swRegistration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
+          });
+      } catch (error) {
+          this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>[ERROR]</strong> Falló la creación de la suscripción: ${error.message}</p></div>`);
+          return;
+      }
+    }
+
+    await this.savePushSubscription(pushSubscription);
+}
 
         urlBase64ToUint8Array(base64String) {
             const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -299,19 +301,17 @@
             return outputArray;
         }
 // --- NUEVA VERSIÓN PARA DEPURACIÓN ---
+// REEMPLAZA TAMBIÉN ESTA FUNCIÓN CON ESTA NUEVA VERSIÓN
 async savePushSubscription(subscription) {
-    console.log("Intentando guardar la suscripción push...");
+    this.addBotMessage('<div class="bot-card"><p><strong>[LOG]</strong> Intentando guardar la suscripción en Supabase...</p></div>');
 
     if (!this.barberProfile) {
-        console.error("¡ERROR CRÍTICO! La función savePushSubscription se llamó, pero 'this.barberProfile' es null. Esto indica una condición de carrera.");
+        this.addBotMessage('<div class="bot-card" style="background-color: #ffdddd;"><p><strong>[ERROR CRÍTICO]</strong> Se intentó guardar, pero el perfil del barbero no estaba cargado (this.barberProfile es null). Esto es una condición de carrera.</p></div>');
         return;
     }
     
-    console.log("Perfil del barbero encontrado. ID:", this.barberProfile.id);
-    console.log("Datos de la suscripción a guardar:", subscription);
+    this.addBotMessage(`<div class="bot-card"><p><strong>[LOG]</strong> Perfil encontrado (ID: <code>${this.barberProfile.id}</code>). Realizando la actualización...</p></div>`);
 
-    // Añadimos .select() al final para que Supabase nos devuelva la fila actualizada.
-    // Esto es CLAVE para diagnosticar problemas de RLS.
     const { data, error } = await supabase
       .from('barbers')
       .update({ push_subscription: subscription })
@@ -319,14 +319,11 @@ async savePushSubscription(subscription) {
       .select();
 
     if (error) {
-        console.error('Error de Supabase al intentar guardar la suscripción:', error);
-        alert(`Error al guardar la suscripción: ${error.message}`);
+        this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>[ERROR de SUPABASE]</strong> Hubo un fallo en la base de datos: <code>${error.message}</code></p></div>`);
     } else if (data && data.length > 0) {
-        console.log('✅ ¡ÉXITO! Suscripción guardada en la BD. Datos devueltos:', data);
-        alert('¡Notificaciones activadas y guardadas correctamente!');
+        this.addBotMessage('<div class="bot-card" style="background-color: #ddffdd;"><p><strong>[ÉXITO]</strong> ¡Suscripción guardada en la base de datos! Las notificaciones deberían funcionar ahora.</p></div>');
     } else {
-        console.warn("⚠️ ATENCIÓN: La operación para guardar la suscripción no devolvió datos. Esto es un síntoma claro de que una Política de Seguridad a Nivel de Fila (RLS) está bloqueando la actualización silenciosamente.");
-        alert("La suscripción no se pudo guardar. Revisa la consola (F12) para ver el aviso sobre RLS.");
+        this.addBotMessage('<div class="bot-card" style="background-color: #ffffcc;"><p><strong>[ATENCIÓN]</strong> La operación no devolvió datos. Esto casi siempre significa que una <strong>Política de Seguridad (RLS)</strong> está bloqueando la actualización. Por favor, ejecuta el código SQL que te envié en el panel de Supabase.</p></div>');
     }
 }
      
@@ -1269,4 +1266,5 @@ async savePushSubscription(subscription) {
 </script>
 </body>
 </html>
+
 
