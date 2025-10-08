@@ -249,41 +249,45 @@
 
             await this.checkAuthState();
 
-            // --- MEJORA AÑADIDA ---
-            // Verifica si el navegador soporta Service Workers y Push API
+            // Al iniciar, intentamos registrar el service worker silenciosamente.
+            // El usuario puede usar el botón del menú si el aviso inicial no aparece.
             if ('serviceWorker' in navigator && 'PushManager' in window) {
-              this.registerServiceWorker();
+              this.registerServiceWorker(true); // true para modo silencioso
             }
         }
 
-        // --- INICIO: CÓDIGO AÑADIDO PARA NOTIFICACIONES PUSH ---
-        async registerServiceWorker() {
-            // Registra el Service Worker
-            const swRegistration = await navigator.serviceWorker.register('/sw.js');
-            
-            // Pide permiso al usuario
+        // --- INICIO: CÓDIGO MODIFICADO PARA NOTIFICACIONES PUSH ---
+        async registerServiceWorker(isSilent = false) {
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                if (!isSilent) this.addBotMessage('<div class="bot-card"><p>❌ Tu navegador no es compatible con las notificaciones push.</p></div>');
+                return;
+            }
+
+            // Esta llamada pide permiso al usuario si no se ha concedido/denegado antes.
+            // Si ya se eligió una opción, devuelve esa opción sin preguntar.
             const permission = await window.Notification.requestPermission();
-            if (permission !== 'granted') {
-              console.log('Permiso de notificación no concedido.');
-              return;
-            }
+            
+            if (permission === 'granted') {
+                if (!isSilent) this.addBotMessage('<div class="bot-card"><p>¡Permiso concedido! 👍 Procediendo a configurar la suscripción...</p></div>');
+                
+                const swRegistration = await navigator.serviceWorker.register('/sw.js');
+                let pushSubscription = await swRegistration.pushManager.getSubscription();
+                
+                if (pushSubscription === null) {
+                  const vapidPublicKey = 'BJCOJ2WGEu7_29mhcE56t5zkmkmO2phKSVEELfWjTVe1RtmeZOZ5LWZfMyNWpWo7q7jNhBqezFf5MQFNq9NYSqA'; // Tu clave VAPID pública
+                  pushSubscription = await swRegistration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
+                  });
+                }
+                
+                await this.savePushSubscription(pushSubscription, isSilent);
 
-            // Obtiene la suscripción push
-            let pushSubscription = await swRegistration.pushManager.getSubscription();
-            if (pushSubscription === null) {
-              // Si no existe, crea una nueva
-              const vapidPublicKey = 'BJCOJ2WGEu7_29mhcE56t5zkmkmO2phKSVEELfWjTVe1RtmeZOZ5LWZfMyNWpWo7q7jNhBqezFf5MQFNq9NYSqA'; // Tu clave VAPID pública
-              pushSubscription = await swRegistration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
-              });
+            } else {
+                if (!isSilent) this.addBotMessage('<div class="bot-card"><p>⚠️ Has denegado el permiso para las notificaciones. Para activarlas, tendrás que ir a la configuración de tu navegador y permitir las notificaciones para este sitio.</p></div>');
             }
-
-            // Guarda la suscripción en la base de datos para este barbero
-            await this.savePushSubscription(pushSubscription);
         }
 
-        // Función de utilidad para convertir la clave VAPID
         urlBase64ToUint8Array(base64String) {
             const padding = '='.repeat((4 - base64String.length % 4) % 4);
             const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -295,26 +299,26 @@
             return outputArray;
         }
 
-        async savePushSubscription(subscription) {
-            // Nos aseguramos de que el perfil del barbero ya se haya cargado
+        async savePushSubscription(subscription, isSilent) {
             if (!this.barberProfile) {
                 console.warn("El perfil del barbero no está disponible para guardar la suscripción push.");
                 return;
             }
             
-            // Añade o actualiza la suscripción en el perfil del barbero
             const { error } = await supabase
               .from('barbers')
               .update({ push_subscription: subscription })
               .eq('id', this.barberProfile.id);
 
             if (error) {
+              if (!isSilent) this.addBotMessage('<div class="bot-card"><p>❌ Hubo un error al guardar tu suscripción.</p></div>');
               console.error('Error al guardar la suscripción push:', error);
             } else {
+              if (!isSilent) this.addBotMessage('<div class="bot-card"><p>✅ ¡Perfecto! Ya estás suscrito a las notificaciones.</p></div>');
               console.log('Suscripción push guardada con éxito.');
             }
         }
-        // --- FIN: CÓDIGO AÑADIDO ---
+        // --- FIN: CÓDIGO MODIFICADO ---
 
 
         updateBadges() {
@@ -492,6 +496,9 @@
                 case '/generar_qr': await this.promptForQRCodeGeneration(); break;
                 case 'menu': case 'menú': this.showMainMenu(); break;
                 
+                // --- NUEVO COMANDO AÑADIDO ---
+                case '/suscribirse_notificaciones': await this.registerServiceWorker(); break;
+                
                 case '/horario':
                     if (argString === 'ver') await this.promptBarberSelection('horario ver');
                     else if (argString === 'definir') await this.promptBarberSelection('horario definir');
@@ -534,6 +541,7 @@
         }
         
         showMainMenu() {
+            // --- MENÚ PRINCIPAL MODIFICADO ---
             const menuHTML = `<div class="bot-card"><h3>Menú Principal</h3><p>Hola de nuevo, ¿en qué te puedo ayudar hoy?</p><div class="command-buttons-container">
             <button class="command-button" data-command="/miperfil">👤 Mi Perfil</button>
             <button class="command-button" data-command="/equipo">👥 Gestionar Equipo</button>
@@ -541,10 +549,12 @@
             <button class="command-button" data-command="/servicios">🛠️ Servicios</button>
             <button class="command-button" data-command="/citas">📅 Ver Citas</button>
             <button class="command-button" data-command="/finanzas">💰 Finanzas</button>
-            <button class="command-button full-width" data-command="/chats">💬 Mis Chats</button>
-            <button class="command-button full-width" data-command="/disponibilidad">🔍 Ver Disponibilidad</button>
-            <button class="command-button full-width" data-command="/cerrar">🚪 Cerrar Sesión</button>
-            </div></div>`; this.addBotMessage(menuHTML);
+            <button class="command-button" data-command="/chats">💬 Mis Chats</button>
+            <button class="command-button" data-command="/disponibilidad">🔍 Ver Disponibilidad</button>
+            <button class="command-button" data-command="/suscribirse_notificaciones">🔔 Activar Notificaciones</button>
+            <button class="command-button" data-command="/cerrar">🚪 Cerrar Sesión</button>
+            </div></div>`;
+            this.addBotMessage(menuHTML);
         }
 
         showServicesMenu() {
