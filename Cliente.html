@@ -572,19 +572,38 @@
                 this.currentFlow = 'booking_confirmation';
             }
             
-            async confirmAndCreateBooking() {
-                this.showTyping();
-                const payload = { barber_id: this.barberData.id, client_id: this.clientProfile.id, service_name: this.bookingData.service.name, price: this.bookingData.service.price, booking_date: this.bookingData.finalTimestamp.toISOString(), status: 'confirmed', barber_name: this.bookingData.barberName };
-                const { error } = await supabase.from('bookings').insert(payload);
-                this.hideTyping();
-                if (error) {
-                    this.addBotMessage(`<div class="bot-card"><p>Lo siento, ocurrió un error al crear tu reserva.</p>${this.mainMenuButton}</div>`);
-                } else {
-                    this.addBotMessage('<div class="bot-card"><p>✅ ¡Tu reserva ha sido confirmada con éxito!</p></div>');
-                }
-                this.bookingData = {};
-                setTimeout(() => this.showClientMainMenu(), 1500);
-            }
+            // Dentro de la clase ClientChatApp en Cliente.html
+
+async confirmAndCreateBooking() {
+    this.showTyping();
+    const payload = { 
+        barber_id: this.barberData.id, 
+        client_id: this.clientProfile.id, 
+        service_name: this.bookingData.service.name, 
+        price: this.bookingData.service.price, 
+        booking_date: this.bookingData.finalTimestamp.toISOString(), 
+        status: 'confirmed', 
+        barber_name: this.bookingData.barberName 
+    };
+
+    const { error } = await supabase.from('bookings').insert(payload);
+    
+    this.hideTyping();
+    
+    if (error) {
+        // --- MODIFICACIÓN IMPORTANTE ---
+        // Añade estas líneas para ver el error detallado en la consola del navegador
+        console.error('Error al crear la reserva en Supabase:', error);
+        
+        // Muestra un mensaje más informativo en la interfaz (opcional pero recomendado)
+        this.addBotMessage(`<div class="bot-card"><p>Lo siento, ocurrió un error al crear tu reserva. <br><small>Detalle: ${error.message}</small></p>${this.mainMenuButton}</div>`);
+        // --- FIN DE LA MODIFICACIÓN ---
+    } else {
+        this.addBotMessage('<div class="bot-card"><p>✅ ¡Tu reserva ha sido confirmada con éxito!</p></div>');
+    }
+    this.bookingData = {};
+    setTimeout(() => this.showClientMainMenu(), 1500);
+}
 
             async checkConnection() {
                 const storedCode = localStorage.getItem('barber_code');
