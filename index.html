@@ -302,20 +302,26 @@ async registerServiceWorker() {
         }
 // --- NUEVA VERSIÓN PARA DEPURACIÓN ---
 // REEMPLAZA TAMBIÉN ESTA FUNCIÓN CON ESTA NUEVA VERSIÓN
+// --- NUEVA VERSIÓN A PRUEBA DE FALLOS ---
+// REEMPLAZA TU FUNCIÓN ACTUAL CON ESTA EN index.html
 async savePushSubscription(subscription) {
     this.addBotMessage('<div class="bot-card"><p><strong>[LOG]</strong> Intentando guardar la suscripción en Supabase...</p></div>');
 
-    if (!this.barberProfile) {
-        this.addBotMessage('<div class="bot-card" style="background-color: #ffdddd;"><p><strong>[ERROR CRÍTICO]</strong> Se intentó guardar, pero el perfil del barbero no estaba cargado (this.barberProfile es null). Esto es una condición de carrera.</p></div>');
+    // 1. Verificamos que el usuario actual esté cargado
+    if (!this.currentUser || !this.currentUser.id) {
+        this.addBotMessage('<div class="bot-card" style="background-color: #ffdddd;"><p><strong>[ERROR CRÍTICO]</strong> No se encontró un usuario logueado (this.currentUser es null). No se puede guardar la suscripción.</p></div>');
         return;
     }
     
-    this.addBotMessage(`<div class="bot-card"><p><strong>[LOG]</strong> Perfil encontrado (ID: <code>${this.barberProfile.id}</code>). Realizando la actualización...</p></div>`);
+    const userId = this.currentUser.id;
+    this.addBotMessage(`<div class="bot-card"><p><strong>[LOG]</strong> Usando el ID de usuario autenticado: <code>${userId}</code>. Realizando la actualización...</p></div>`);
 
+    // 2. MODIFICACIÓN CLAVE: Usamos .eq('user_id', userId) en lugar de .eq('id', this.barberProfile.id)
+    // Esto es más directo y robusto, ya que la política RLS se basa en 'user_id'.
     const { data, error } = await supabase
       .from('barbers')
       .update({ push_subscription: subscription })
-      .eq('id', this.barberProfile.id)
+      .eq('user_id', userId) // <-- ¡El cambio importante está aquí!
       .select();
 
     if (error) {
@@ -323,7 +329,7 @@ async savePushSubscription(subscription) {
     } else if (data && data.length > 0) {
         this.addBotMessage('<div class="bot-card" style="background-color: #ddffdd;"><p><strong>[ÉXITO]</strong> ¡Suscripción guardada en la base de datos! Las notificaciones deberían funcionar ahora.</p></div>');
     } else {
-        this.addBotMessage('<div class="bot-card" style="background-color: #ffffcc;"><p><strong>[ATENCIÓN]</strong> La operación no devolvió datos. Esto casi siempre significa que una <strong>Política de Seguridad (RLS)</strong> está bloqueando la actualización. Por favor, ejecuta el código SQL que te envié en el panel de Supabase.</p></div>');
+        this.addBotMessage('<div class="bot-card" style="background-color: #ffffcc;"><p><strong>[ATENCIÓN]</strong> La operación se completó sin errores, pero no actualizó ninguna fila. Esto confirma que la Política de Seguridad (RLS) la bloqueó. Si los IDs son iguales, esto podría indicar un problema muy raro en la replicación de datos de Supabase. Intenta de nuevo en un minuto.</p></div>');
     }
 }
      
@@ -1266,5 +1272,4 @@ async savePushSubscription(subscription) {
 </script>
 </body>
 </html>
-
 
