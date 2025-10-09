@@ -256,44 +256,50 @@
             }
         }
 
-        // --- INICIO: CÓDIGO MODIFICADO PARA NOTIFICACIONES PUSH ---
-        // REEMPLAZA LA FUNCIÓN ANTIGUA CON ESTA
-// --- NUEVA VERSIÓN CON DEPURACIÓN DETALLADA ---
-// REEMPLAZA LA FUNCIÓN ANTIGUA EN index.html CON ESTA
+
 async registerServiceWorker() {
-    this.addBotMessage('<div class="bot-card"><p><strong>[LOG 1/6]</strong> Iniciando registro del Service Worker...</p></div>');
+    // 1. Informa al usuario que el proceso ha comenzado.
+    this.addBotMessage('<div class="bot-card"><p>Entendido. Voy a intentar activar las notificaciones. Es posible que tu navegador te pida permiso...</p></div>');
+    this.showTyping();
+
+    console.log("Notificaciones: Iniciando registro del Service Worker..."); // Log para consola
 
     try {
         const swRegistration = await navigator.serviceWorker.register('./sw.js');
-        this.addBotMessage('<div class="bot-card"><p><strong>[LOG 2/6]</strong> ✅ Service Worker registrado con éxito. Pidiendo permiso para notificaciones...</p></div>');
+        console.log("Notificaciones: Service Worker registrado con éxito.", swRegistration); // Log para consola
 
         const permission = await window.Notification.requestPermission();
         if (permission !== 'granted') {
-          this.addBotMessage('<div class="bot-card" style="background-color: #ffdddd;"><p><strong>[FALLO]</strong> Permiso de notificación no concedido. El usuario denegó el permiso.</p></div>');
+          console.warn("Notificaciones: El usuario no concedió el permiso."); // Log para consola
+          this.hideTyping();
+          this.addBotMessage('<div class="bot-card" style="background-color: #ffffcc;"><p><strong>Permiso denegado.</strong> No podré enviarte notificaciones si no aceptas el permiso en la ventana de tu navegador.</p></div>');
           return;
         }
-
-        this.addBotMessage('<div class="bot-card"><p><strong>[LOG 3/6]</strong> ✅ Permiso concedido. Obteniendo suscripción push...</p></div>');
+        
+        console.log("Notificaciones: Permiso concedido. Obteniendo suscripción push..."); // Log para consola
 
         let pushSubscription = await swRegistration.pushManager.getSubscription();
         if (pushSubscription === null) {
-          this.addBotMessage('<div class="bot-card"><p><strong>[LOG 4/6]</strong> No se encontró suscripción existente. Creando una nueva...</p></div>');
+          console.log("Notificaciones: No se encontró suscripción, creando una nueva..."); // Log para consola
           const vapidPublicKey = 'BJCOJ2WGEu7_29mhcE56t5zkmkmO2phKSVEELfWjTVe1RtmeZOZ5LWZfMyNWpWo7q7jNhBqezFf5MQFNq9NYSqA';
           
           pushSubscription = await swRegistration.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
           });
-          this.addBotMessage('<div class="bot-card"><p><strong>[LOG 5/6]</strong> ✅ Nueva suscripción creada con éxito.</p></div>');
+          console.log("Notificaciones: Nueva suscripción creada."); // Log para consola
         } else {
-            this.addBotMessage('<div class="bot-card"><p><strong>[LOG 5/6]</strong> ✅ Se encontró una suscripción existente.</p></div>');
+            console.log("Notificaciones: Se encontró una suscripción existente."); // Log para consola
         }
 
-        this.addBotMessage('<div class="bot-card"><p><strong>[LOG 6/6]</strong> Procediendo a guardar la suscripción en la base de datos...</p></div>');
         await this.savePushSubscription(pushSubscription);
 
     } catch (error) {
-        this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>[ERROR CATASTRÓFICO]</strong> La función falló con un error: <br><code>${error.name}: ${error.message}</code></p></div>`);
+        console.error("Notificaciones: Error catastrófico durante el registro.", error); // Log para consola
+        this.hideTyping();
+        this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>¡Ups! Hubo un error.</strong> No se pudieron activar las notificaciones. <br><small>Detalle: ${error.message}</small></p></div>`);
+    } finally {
+      this.hideTyping();
     }
 }
 
@@ -307,40 +313,38 @@ async registerServiceWorker() {
             }
             return outputArray;
         }
-// --- NUEVA VERSIÓN PARA DEPURACIÓN ---
-// REEMPLAZA TAMBIÉN ESTA FUNCIÓN CON ESTA NUEVA VERSIÓN
-// --- NUEVA VERSIÓN A PRUEBA DE FALLOS ---
-// REEMPLAZA TU FUNCIÓN ACTUAL CON ESTA EN index.html
-async savePushSubscription(subscription) {
-    this.addBotMessage('<div class="bot-card"><p><strong>[LOG]</strong> Intentando guardar la suscripción en Supabase...</p></div>');
 
-    // 1. Verificamos que el usuario actual esté cargado
+     
+// ⬇️ REEMPLAZA TAMBIÉN ESTA FUNCIÓN COMPLETA EN index.html ⬇️
+async savePushSubscription(subscription) {
+    console.log("BD: Intentando guardar la suscripción en Supabase..."); // Log para consola
+
     if (!this.currentUser || !this.currentUser.id) {
-        this.addBotMessage('<div class="bot-card" style="background-color: #ffdddd;"><p><strong>[ERROR CRÍTICO]</strong> No se encontró un usuario logueado (this.currentUser es null). No se puede guardar la suscripción.</p></div>');
+        console.error("BD Error: No se encontró un usuario logueado para guardar la suscripción."); // Log para consola
+        this.addBotMessage('<div class="bot-card" style="background-color: #ffdddd;"><p><strong>Error Crítico:</strong> No pude identificarte. Por favor, intenta recargar la página.</p></div>');
         return;
     }
     
     const userId = this.currentUser.id;
-    this.addBotMessage(`<div class="bot-card"><p><strong>[LOG]</strong> Usando el ID de usuario autenticado: <code>${userId}</code>. Realizando la actualización...</p></div>`);
+    console.log(`BD: Actualizando perfil para user_id: ${userId}`); // Log para consola
 
-    // 2. MODIFICACIÓN CLAVE: Usamos .eq('user_id', userId) en lugar de .eq('id', this.barberProfile.id)
-    // Esto es más directo y robusto, ya que la política RLS se basa en 'user_id'.
     const { data, error } = await supabase
       .from('barbers')
       .update({ push_subscription: subscription })
-      .eq('user_id', userId) // <-- ¡El cambio importante está aquí!
+      .eq('user_id', userId) 
       .select();
 
     if (error) {
-        this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>[ERROR de SUPABASE]</strong> Hubo un fallo en la base de datos: <code>${error.message}</code></p></div>`);
+        console.error("BD Error: Fallo al guardar la suscripción.", error); // Log para consola
+        this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>Error en la base de datos:</strong> No se pudo guardar la configuración de notificaciones.<br><small>${error.message}</small></p></div>`);
     } else if (data && data.length > 0) {
-        this.addBotMessage('<div class="bot-card" style="background-color: #ddffdd;"><p><strong>[ÉXITO]</strong> ¡Suscripción guardada en la base de datos! Las notificaciones deberían funcionar ahora.</p></div>');
+        console.info("BD: ¡Suscripción guardada con éxito!"); // Log para consola
+        this.addBotMessage('<div class="bot-card" style="background-color: #ddffdd;"><p><strong>¡Listo! ✅</strong> Las notificaciones han sido activadas. A partir de ahora recibirás alertas de nuevas citas y mensajes.</p></div>');
     } else {
-        this.addBotMessage('<div class="bot-card" style="background-color: #ffffcc;"><p><strong>[ATENCIÓN]</strong> La operación se completó sin errores, pero no actualizó ninguna fila. Esto confirma que la Política de Seguridad (RLS) la bloqueó. Si los IDs son iguales, esto podría indicar un problema muy raro en la replicación de datos de Supabase. Intenta de nuevo en un minuto.</p></div>');
+        console.warn("BD: La operación no falló, pero no se actualizó ninguna fila. Posible problema con RLS o ID de usuario."); // Log para consola
+        this.addBotMessage('<div class="bot-card" style="background-color: #ffffcc;"><p><strong>Atención:</strong> La configuración se completó, pero parece que no se guardó. Si no recibes notificaciones, contacta a soporte.</p></div>');
     }
 }
-     
-        // --- FIN: CÓDIGO MODIFICADO ---
 
 
         updateBadges() {
@@ -1279,5 +1283,4 @@ async savePushSubscription(subscription) {
 </script>
 </body>
 </html>
-
 
