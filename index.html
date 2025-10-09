@@ -264,7 +264,7 @@ async registerServiceWorker() {
     this.addBotMessage('<div class="bot-card"><p><strong>[LOG 1/6]</strong> Iniciando registro del Service Worker...</p></div>');
 
     try {
-        const swRegistration = await navigator.serviceWorker.register('/sw.js');
+        const swRegistration = await navigator.serviceWorker.register('Citas-online/sw.js');
         this.addBotMessage('<div class="bot-card"><p><strong>[LOG 2/6]</strong> ✅ Service Worker registrado con éxito. Pidiendo permiso para notificaciones...</p></div>');
 
         const permission = await window.Notification.requestPermission();
@@ -1279,3 +1279,4 @@ async savePushSubscription(subscription) {
 </script>
 </body>
 </html>
+
