@@ -258,36 +258,43 @@
 
         // --- INICIO: CÓDIGO MODIFICADO PARA NOTIFICACIONES PUSH ---
         // REEMPLAZA LA FUNCIÓN ANTIGUA CON ESTA
+// --- NUEVA VERSIÓN CON DEPURACIÓN DETALLADA ---
+// REEMPLAZA LA FUNCIÓN ANTIGUA EN index.html CON ESTA
 async registerServiceWorker() {
-    this.addBotMessage('<div class="bot-card"><p><strong>[LOG]</strong> Iniciando registro del Service Worker...</p></div>');
+    this.addBotMessage('<div class="bot-card"><p><strong>[LOG 1/6]</strong> Iniciando registro del Service Worker...</p></div>');
 
-    const swRegistration = await navigator.serviceWorker.register('/sw.js');
-    
-    const permission = await window.Notification.requestPermission();
-    if (permission !== 'granted') {
-      this.addBotMessage('<div class="bot-card" style="background-color: #ffdddd;"><p><strong>[ERROR]</strong> Permiso de notificación no concedido. No se pueden activar las notificaciones.</p></div>');
-      return;
-    }
+    try {
+        const swRegistration = await navigator.serviceWorker.register('/sw.js');
+        this.addBotMessage('<div class="bot-card"><p><strong>[LOG 2/6]</strong> ✅ Service Worker registrado con éxito. Pidiendo permiso para notificaciones...</p></div>');
 
-    // Este es el mensaje que ya veías en tu captura
-    this.addBotMessage('<div class="bot-card"><p>✅ ¡Permiso concedido! 👍<br>Procediendo a configurar la suscripción...</p></div>');
+        const permission = await window.Notification.requestPermission();
+        if (permission !== 'granted') {
+          this.addBotMessage('<div class="bot-card" style="background-color: #ffdddd;"><p><strong>[FALLO]</strong> Permiso de notificación no concedido. El usuario denegó el permiso.</p></div>');
+          return;
+        }
 
-    let pushSubscription = await swRegistration.pushManager.getSubscription();
-    if (pushSubscription === null) {
-      this.addBotMessage('<div class="bot-card"><p><strong>[LOG]</strong> No se encontró suscripción existente. Creando una nueva...</p></div>');
-      const vapidPublicKey = 'BJCOJ2WGEu7_29mhcE56t5zkmkmO2phKSVEELfWjTVe1RtmeZOZ5LWZfMyNWpWo7q7jNhBqezFf5MQFNq9NYSqA';
-      try {
+        this.addBotMessage('<div class="bot-card"><p><strong>[LOG 3/6]</strong> ✅ Permiso concedido. Obteniendo suscripción push...</p></div>');
+
+        let pushSubscription = await swRegistration.pushManager.getSubscription();
+        if (pushSubscription === null) {
+          this.addBotMessage('<div class="bot-card"><p><strong>[LOG 4/6]</strong> No se encontró suscripción existente. Creando una nueva...</p></div>');
+          const vapidPublicKey = 'BJCOJ2WGEu7_29mhcE56t5zkmkmO2phKSVEELfWjTVe1RtmeZOZ5LWZfMyNWpWo7q7jNhBqezFf5MQFNq9NYSqA';
+          
           pushSubscription = await swRegistration.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
           });
-      } catch (error) {
-          this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>[ERROR]</strong> Falló la creación de la suscripción: ${error.message}</p></div>`);
-          return;
-      }
-    }
+          this.addBotMessage('<div class="bot-card"><p><strong>[LOG 5/6]</strong> ✅ Nueva suscripción creada con éxito.</p></div>');
+        } else {
+            this.addBotMessage('<div class="bot-card"><p><strong>[LOG 5/6]</strong> ✅ Se encontró una suscripción existente.</p></div>');
+        }
 
-    await this.savePushSubscription(pushSubscription);
+        this.addBotMessage('<div class="bot-card"><p><strong>[LOG 6/6]</strong> Procediendo a guardar la suscripción en la base de datos...</p></div>');
+        await this.savePushSubscription(pushSubscription);
+
+    } catch (error) {
+        this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>[ERROR CATASTRÓFICO]</strong> La función falló con un error: <br><code>${error.name}: ${error.message}</code></p></div>`);
+    }
 }
 
         urlBase64ToUint8Array(base64String) {
