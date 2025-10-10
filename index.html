@@ -189,7 +189,7 @@
 
 <script> 
     const SUPABASE_URL = 'https://olkjevlkqdafbhuiszfz.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9sa2pldmxrcWRhZmJodWlzemZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyNzc5ODcsImV4cCI6MjA3NDg1Mzk4N30.5V7LTjITA3szqyNxUy67K0r1IhaB9MpnxSML7IygYcM';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9sa2pldmxrcWRhZmJodWlzemZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyNzc5ODcsImV4cCI6MjA3NDg1Mzk4N30.5V7LTjITA3szqyNxUy67Kr1IhaB9MpnxSML7IygYcM';
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     
     class ChatApp {
@@ -251,16 +251,13 @@
 
             await this.checkAuthState();
 
-            // Al iniciar, intentamos registrar el service worker silenciosamente.
-            // El usuario puede usar el botón del menú si el aviso inicial no aparece.
-            if ('serviceWorker' in navigator && 'PushManager' in window) {
-              this.registerServiceWorker(true); // true para modo silencioso
-            }
+            // --- BLOQUE ELIMINADO ---
+            // Se ha quitado la llamada automática a registerServiceWorker de aquí
         }
 
 
 async registerServiceWorker() {
-    // 1. Ya no se informa al usuario que el proceso ha comenzado.
+    this.addBotMessage('<div class="bot-card"><p>Entendido. Voy a intentar activar las notificaciones. Es posible que tu navegador te pida permiso...</p></div>');
     this.showTyping();
 
     console.log("Notificaciones: Iniciando registro del Service Worker..."); // Log para consola
