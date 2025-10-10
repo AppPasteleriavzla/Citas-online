@@ -753,6 +753,7 @@ async savePushSubscription(subscription) {
         }
         
 // Reemplaza tu función showBarberProfile existente con esta versión mejorada
+// Reemplaza tu función showBarberProfile con esta versión definitiva
 
         async showBarberProfile() {
             this.showTyping();
@@ -768,6 +769,10 @@ async savePushSubscription(subscription) {
             }
 
             const accountType = profile.is_team_account ? 'Equipo (Múltiples Barberos)' : 'Individual';
+
+            // --- LÍNEA CORREGIDA ---
+            // Aquí escapamos las comillas simples en el nombre de la barbería para evitar errores de sintaxis.
+            const sanitizedShopName = profile.barber_shop_name.replace(/'/g, "\\'");
 
             const profileHTML = `
             <div class="bot-card">
@@ -794,7 +799,8 @@ async savePushSubscription(subscription) {
 
                 <div class="command-buttons-container" style="margin-top: 15px; grid-template-columns: 1fr 1fr;">
                     <button class="command-button" onclick="app.copyCodeToClipboard('${profile.public_code}', this)">📋 Copiar Código</button>
-                    <button class="command-button confirm" onclick="app.shareProfileCode('${profile.public_code}', '${profile.barber_shop_name}')">📲 Compartir</button>
+                    
+                    <button class="command-button confirm" onclick="app.shareProfileCode('${profile.public_code}', '${sanitizedShopName}')">📲 Compartir</button>
                 </div>
                 
                 <div class="command-buttons-container" style="margin-top: 10px;">
