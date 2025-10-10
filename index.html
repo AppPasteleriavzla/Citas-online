@@ -752,8 +752,100 @@ async savePushSubscription(subscription) {
             }
         }
         
+// Reemplaza tu función showBarberProfile existente con esta versión mejorada
+
         async showBarberProfile() {
-            // Esta función podría mostrar el perfil de la barbería
+            this.showTyping();
+            
+            const profile = this.getBarberProfile();
+
+            await new Promise(resolve => setTimeout(resolve, 500)); 
+            this.hideTyping();
+
+            if (!profile) {
+                this.addBotMessage('<div class="bot-card"><p>❌ No pude cargar tu perfil. Intenta recargar la página.</p></div>');
+                return;
+            }
+
+            const accountType = profile.is_team_account ? 'Equipo (Múltiples Barberos)' : 'Individual';
+
+            const profileHTML = `
+            <div class="bot-card">
+                <h3>👤 Mi Perfil</h3>
+                <ul>
+                    <li>
+                        <span class="item-name">Nombre:</span>
+                        <span class="item-detail">${profile.first_name} ${profile.last_name}</span>
+                    </li>
+                    <li>
+                        <span class="item-name">Nombre de la Barbería:</span>
+                        <span class="item-detail">${profile.barber_shop_name}</span>
+                    </li>
+                    <li>
+                        <span class="item-name">Tipo de Cuenta:</span>
+                        <span class="item-detail">${accountType}</span>
+                    </li>
+                    <li>
+                        <span class="item-name">Código para Clientes:</span>
+                        <span class="item-detail" style="font-weight: bold; color: #764ba2;">${profile.public_code}</span>
+                    </li>
+                </ul>
+                <p class="helper-text">Tus clientes usan este código para conectar con tu barbería.</p>
+
+                <div class="command-buttons-container" style="margin-top: 15px; grid-template-columns: 1fr 1fr;">
+                    <button class="command-button" onclick="app.copyCodeToClipboard('${profile.public_code}', this)">📋 Copiar Código</button>
+                    <button class="command-button confirm" onclick="app.shareProfileCode('${profile.public_code}', '${profile.barber_shop_name}')">📲 Compartir</button>
+                </div>
+                
+                <div class="command-buttons-container" style="margin-top: 10px;">
+                    <button class="command-button full-width return" data-command="menu">↩️ Volver al Menú</button>
+                </div>
+            </div>`;
+            
+            this.addBotMessage(profileHTML);
+        }
+        
+        // Pega estas dos nuevas funciones en tu archivo index.html, dentro de la clase ChatApp
+
+        async copyCodeToClipboard(code, buttonElement) {
+            try {
+                await navigator.clipboard.writeText(code);
+                // Feedback visual para el usuario
+                const originalText = buttonElement.innerHTML;
+                buttonElement.innerHTML = '✅ ¡Copiado!';
+                buttonElement.style.backgroundColor = '#28a745'; // Verde de éxito
+                
+                // Vuelve al estado original después de 2 segundos
+                setTimeout(() => {
+                    buttonElement.innerHTML = originalText;
+                    buttonElement.style.backgroundColor = ''; // Restaura el color original
+                }, 2000);
+
+            } catch (err) {
+                console.error('Error al copiar el código: ', err);
+                this.addBotMessage('<div class="bot-card"><p>❌ Hubo un error al intentar copiar el código.</p></div>');
+            }
+        }
+
+        async shareProfileCode(code, shopName) {
+            const shareData = {
+                title: `Código para ${shopName}`,
+                text: `¡Hola! Usa este código para conectar con nuestra barbería "${shopName}" en BarberConnect: ${code}`,
+                url: window.location.href // Puedes poner la URL de tu app para clientes aquí
+            };
+
+            // Comprueba si el navegador soporta la API de compartir
+            if (navigator.share && navigator.canShare(shareData)) {
+                try {
+                    await navigator.share(shareData);
+                    console.log('Código compartido con éxito');
+                } catch (err) {
+                    console.error('Error al compartir: ', err);
+                }
+            } else {
+                // Mensaje por si el navegador no es compatible (ej. un PC de escritorio)
+                this.addBotMessage('<div class="bot-card"><p>La función de compartir no está disponible en este navegador. Puedes copiar el código manualmente.</p></div>');
+            }
         }
 
         async showServices() {
