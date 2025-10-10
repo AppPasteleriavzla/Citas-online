@@ -260,8 +260,7 @@
 
 
 async registerServiceWorker() {
-    // 1. Informa al usuario que el proceso ha comenzado.
-    this.addBotMessage('<div class="bot-card"><p>Entendido. Voy a intentar activar las notificaciones. Es posible que tu navegador te pida permiso...</p></div>');
+    // 1. Ya no se informa al usuario que el proceso ha comenzado.
     this.showTyping();
 
     console.log("Notificaciones: Iniciando registro del Service Worker..."); // Log para consola
@@ -1382,4 +1381,3 @@ async savePushSubscription(subscription) {
 </script>
 </body>
 </html>
-
