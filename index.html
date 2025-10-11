@@ -257,51 +257,67 @@
 
 
 
-        // ⬇️ REEMPLAZA ESTA FUNCIÓN EN TU CÓDIGO ⬇️
-        async registerServiceWorker() {
-            // this.addBotMessage('<div class="bot-card"><p>Entendido. Voy a intentar activar las notificaciones. Es posible que tu navegador te pida permiso...</p></div>'); // <-- LÍNEA ELIMINADA
-            this.showTyping();
+        // ⬇️ REEMPLAZA TU FUNCIÓN ACTUAL POR ESTA VERSIÓN MEJORADA ⬇️
+async registerServiceWorker() {
+    // Primero, verificamos que el navegador soporte notificaciones.
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+        this.addBotMessage('<div class="bot-card" style="background-color: #ffdddd;"><p><strong>No Soportado.</strong> Tu navegador no es compatible con las notificaciones push.</p></div>');
+        return;
+    }
 
-            console.log("Notificaciones: Iniciando registro del Service Worker..."); // Log para consola
+    // Verificamos el estado actual del permiso SIN pedirlo todavía.
+    const currentPermission = Notification.permission;
 
-            try {
-                const swRegistration = await navigator.serviceWorker.register('./sw.js');
-                console.log("Notificaciones: Service Worker registrado con éxito.", swRegistration); // Log para consola
+    if (currentPermission === 'granted') {
+        this.addBotMessage('<div class="bot-card" style="background-color: #ddffdd;"><p><strong>¡Ya estás suscrito!</strong> ✅ No es necesario volver a activar las notificaciones.</p></div>');
+        return; // Salimos de la función porque ya está todo listo.
+    }
 
-                const permission = await window.Notification.requestPermission();
-                if (permission !== 'granted') {
-                  console.warn("Notificaciones: El usuario no concedió el permiso."); // Log para consola
-                  this.hideTyping();
-                  this.addBotMessage('<div class="bot-card" style="background-color: #ffffcc;"><p><strong>Permiso denegado.</strong> No podré enviarte notificaciones si no aceptas el permiso en la ventana de tu navegador.</p></div>');
-                  return;
-                }
-                
-                console.log("Notificaciones: Permiso concedido. Obteniendo suscripción push..."); // Log para consola
+    if (currentPermission === 'denied') {
+        this.addBotMessage('<div class="bot-card" style="background-color: #ffffcc;"><p><strong>Permiso Bloqueado.</strong> 🚫 Has bloqueado las notificaciones para esta app. Para activarlas, necesitas cambiar los permisos desde la configuración de tu navegador.</p></div>');
+        return; // Salimos porque el usuario las tiene bloqueadas.
+    }
 
-                let pushSubscription = await swRegistration.pushManager.getSubscription();
-                if (pushSubscription === null) {
-                  console.log("Notificaciones: No se encontró suscripción, creando una nueva..."); // Log para consola
-                  const vapidPublicKey = 'BJCOJ2WGEu7_29mhcE56t5zkmkmO2phKSVEELfWjTVe1RtmeZOZ5LWZfMyNWpWo7q7jNhBqezFf5MQFNq9NYSqA';
-                  
-                  pushSubscription = await swRegistration.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
-                  });
-                  console.log("Notificaciones: Nueva suscripción creada."); // Log para consola
-                } else {
-                    console.log("Notificaciones: Se encontró una suscripción existente."); // Log para consola
-                }
+    // Si el permiso es 'default', entonces sí procedemos a solicitarlo.
+    this.showTyping();
+    try {
+        const swRegistration = await navigator.serviceWorker.register('./sw.js');
+        console.log("Notificaciones: Service Worker registrado con éxito.", swRegistration);
 
-                await this.savePushSubscription(pushSubscription);
+        // AHORA SÍ PEDIMOS EL PERMISO
+        const permissionResult = await window.Notification.requestPermission();
 
-            } catch (error) {
-                console.error("Notificaciones: Error catastrófico durante el registro.", error); // Log para consola
-                this.hideTyping();
-                this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>¡Ups! Hubo un error.</strong> No se pudieron activar las notificaciones. <br><small>Detalle: ${error.message}</small></p></div>`);
-            } finally {
-              this.hideTyping();
-            }
+        if (permissionResult !== 'granted') {
+            console.warn("Notificaciones: El usuario no concedió el permiso.");
+            this.hideTyping();
+            this.addBotMessage('<div class="bot-card" style="background-color: #ffffcc;"><p><strong>Permiso denegado.</strong> No podré enviarte notificaciones si no aceptas el permiso en la ventana de tu navegador.</p></div>');
+            return;
         }
+        
+        console.log("Notificaciones: Permiso concedido. Obteniendo suscripción push...");
+        let pushSubscription = await swRegistration.pushManager.getSubscription();
+
+        if (pushSubscription === null) {
+            console.log("Notificaciones: No se encontró suscripción, creando una nueva...");
+            const vapidPublicKey = 'BJCOJ2WGEu7_29mhcE56t5zkmkmO2phKSVEELfWjTVe1RtmeZOZ5LWZfMyNWpWo7q7jNhBqezFf5MQFNq9NYSqA';
+            pushSubscription = await swRegistration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
+            });
+            console.log("Notificaciones: Nueva suscripción creada.");
+        } else {
+            console.log("Notificaciones: Se encontró una suscripción existente.");
+        }
+
+        await this.savePushSubscription(pushSubscription);
+
+    } catch (error) {
+        console.error("Notificaciones: Error catastrófico durante el registro.", error);
+        this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>¡Ups! Hubo un error.</strong> No se pudieron activar las notificaciones. <br><small>Detalle: ${error.message}</small></p></div>`);
+    } finally {
+        this.hideTyping();
+    }
+}
 
          
 
@@ -1382,4 +1398,5 @@ async savePushSubscription(subscription) {
 </script>
 </body>
 </html>
+
 
