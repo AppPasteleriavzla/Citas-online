@@ -189,7 +189,7 @@
 
 <script> 
     const SUPABASE_URL = 'https://olkjevlkqdafbhuiszfz.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9sa2pldmxrcWRhZmJodWlzemZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyNzc5ODcsImV4cCI6MjA3NDg1Mzk4N30.5V7LTjITA3szqyNxUy67Kr1IhaB9MpnxSML7IygYcM';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9sa2pldmxrcWRhZmJodWlzemZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyNzc5ODcsImV4cCI6MjA3NDg1Mzk4N30.5V7LTjITA3szqyNxUy67K0r1IhaB9MpnxSML7IygYcM';
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     
     class ChatApp {
@@ -1265,7 +1265,48 @@ async savePushSubscription(subscription) {
             }]); 
         }
 
-        async loginUser(password) { const { data, error } = await supabase.auth.signInWithPassword({ email: this.userData.email, password: password }); if (error) { this.addBotMessage(`<div class="bot-card"><p>❌ Usuario o contraseña incorrectos. Vamos a intentarlo de nuevo.</p></div>`); this.currentFlow = 'has_account'; this.handleAuthFlow('si'); return; } this.currentUser = data.user; this.addBotMessage('<div class="bot-card"><p>✅ ¡Inicio de sesión exitoso!</p></div>'); this.checkAuthState(); }
+// ⬇️ REEMPLAZA TU FUNCIÓN ACTUAL POR ESTA VERSIÓN MEJORADA EN index.html ⬇️
+async loginUser(password) {
+    this.showTyping(); // Añade un feedback visual mientras se procesa
+    const { data, error } = await supabase.auth.signInWithPassword({
+        email: this.userData.email,
+        password: password
+    });
+    this.hideTyping();
+
+    if (error) {
+        // 1. Siempre registra el error en la consola para depuración
+        console.error("Error de inicio de sesión de Supabase:", error);
+
+        // 2. Comprueba si el error es por falta de confirmación de email
+        if (error.message && error.message.includes('Email not confirmed')) {
+            this.addBotMessage(
+                `<div class="bot-card" style="background-color: #ffffcc;">
+                    <p><strong>⚠️ Tu cuenta no ha sido confirmada.</strong></p>
+                    <p>Por favor, revisa tu bandeja de entrada (y la carpeta de spam) y haz clic en el enlace de confirmación que te enviamos al registrarte.</p>
+                </div>`
+            );
+        } else {
+            // 3. Para cualquier otro error, muestra el mensaje genérico mejorado
+            this.addBotMessage(
+                `<div class="bot-card">
+                    <p>❌ Usuario o contraseña incorrectos.</p>
+                    <small style="color: #666;">Si el problema persiste, asegúrate de que tus datos son correctos y que has confirmado tu correo electrónico.</small>
+                </div>`
+            );
+        }
+        
+        // Reinicia el flujo para que el usuario pueda intentarlo de nuevo
+        this.currentFlow = 'has_account';
+        setTimeout(() => this.handleAuthFlow('si'), 1500);
+        return;
+    }
+    
+    // Si no hay error, el inicio de sesión es exitoso
+    this.currentUser = data.user;
+    this.addBotMessage('<div class="bot-card"><p>✅ ¡Inicio de sesión exitoso!</p></div>');
+    this.checkAuthState();
+}
         
         async logout() { 
             await supabase.auth.signOut(); 
