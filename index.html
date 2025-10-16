@@ -20,15 +20,15 @@
             align-items: center;
         }
         .chat-container { width: 100%; max-width: 400px; height: 100vh; background: white; display: flex; flex-direction: column; box-shadow: 0 0 10px rgba(0,0,0,0.1); overflow: hidden; }
-        .chat-header { 
+      .chat-header { 
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
             color: white; 
             padding: 20px; 
-            text-align: center; 
+            /* text-align: center; <-- Eliminado */
             border-bottom: 1px solid #e0e0e0; 
             position: relative;
             display: flex;
-            justify-content: center;
+            justify-content: space-between; /* <-- Modificado */
             align-items: center;
         }
         .chat-header h1 { margin: 0; font-size: 1.5em; }
@@ -143,6 +143,34 @@
             100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
         }
          #qrcode-display { display: flex; justify-content: center; align-items: center; padding: 20px; }
+         
+
+/* --- NUEVOS ESTILOS PARA LA FOTO DE PERFIL --- */
+.profile-avatar-wrapper {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+.profile-avatar {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background-color: #764ba2;
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 2.5em;
+    font-weight: bold;
+    border: 3px solid white;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    overflow: hidden; /* Para que la imagen no se salga del círculo */
+}
+.profile-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* Asegura que la imagen cubra todo el espacio sin deformarse */
+}
     </style>
 </head>
 <body>
@@ -181,6 +209,7 @@
             <div class="messages-container" id="singleChatMessages"></div>
         </div>
 
+        <input type="file" id="profilePicInput" accept="image/png, image/jpeg" style="display: none;">
         <div class="input-container">
             <input type="text" class="message-input" id="messageInput" placeholder="Escribe un mensaje...">
             <button class="send-button" id="sendButton">➤</button>
@@ -222,7 +251,12 @@
             this.chatsBadge = document.getElementById('chatsBadge');
             this.bookingsBadge = document.getElementById('bookingsBadge');
             this.financeBadge = document.getElementById('financeBadge');
+            
+
+            
             this.chatsIconWrapper = document.getElementById('chatsIconWrapper');
+            this.profilePicInput = document.getElementById('profilePicInput');
+            
             this.bookingsIconWrapper = document.getElementById('bookingsIconWrapper');
             this.financeIconWrapper = document.getElementById('financeIconWrapper');
 
@@ -248,6 +282,11 @@
                 this.newTransactionsCount = 0;
                 this.updateBadges();
             });
+            
+            
+            
+            this.profilePicInput.addEventListener('change', (event) => this.uploadProfilePicture(event));
+
 
             await this.checkAuthState();
 
@@ -770,63 +809,73 @@ async savePushSubscription(subscription) {
             }
         }
         
-// Reemplaza tu función showBarberProfile con esta versión definitiva
+async showBarberProfile() {
+    this.showTyping();
+    const profile = this.getBarberProfile();
+    await new Promise(resolve => setTimeout(resolve, 500)); 
+    this.hideTyping();
 
-        async showBarberProfile() {
-            this.showTyping();
-            
-            const profile = this.getBarberProfile();
+    if (!profile) {
+        this.addBotMessage('<div class="bot-card"><p>❌ No pude cargar tu perfil. Intenta recargar la página.</p></div>');
+        return;
+    }
 
-            await new Promise(resolve => setTimeout(resolve, 500)); 
-            this.hideTyping();
+    const accountType = profile.is_team_account ? 'Equipo (Múltiples Barberos)' : 'Individual';
+    const sanitizedShopName = profile.barber_shop_name.replace(/'/g, "\\'");
 
-            if (!profile) {
-                this.addBotMessage('<div class="bot-card"><p>❌ No pude cargar tu perfil. Intenta recargar la página.</p></div>');
-                return;
-            }
+    // --- LÓGICA PARA EL AVATAR Y BOTONES ---
+    let avatarHTML = '';
+    if (profile.avatar_url) {
+        // Si hay foto, la mostramos
+        avatarHTML = `<div class="profile-avatar"><img src="${profile.avatar_url}" alt="Foto de Perfil"></div>`;
+    } else {
+        // Si no, mostramos la inicial del nombre
+        const initial = profile.first_name ? profile.first_name.charAt(0).toUpperCase() : '?';
+        avatarHTML = `<div class="profile-avatar"><span>${initial}</span></div>`;
+    }
 
-            const accountType = profile.is_team_account ? 'Equipo (Múltiples Barberos)' : 'Individual';
+    let photoButtonsHTML = '';
+    if (profile.avatar_url) {
+        // Si hay foto, mostramos botones de editar y eliminar
+        photoButtonsHTML = `
+            <button class="command-button" onclick="app.triggerFileUpload()">✏️ Editar Foto</button>
+            <button class="command-button cancel" onclick="app.deleteProfilePicture()">🗑️ Eliminar Foto</button>
+        `;
+    } else {
+        // Si no hay foto, mostramos solo el de subir
+        photoButtonsHTML = `
+            <button class="command-button full-width confirm" onclick="app.triggerFileUpload()">📸 Subir Foto de Perfil</button>
+        `;
+    }
 
-            // --- LÍNEA CORREGIDA ---
-            // Aquí escapamos las comillas simples en el nombre de la barbería para evitar errores de sintaxis.
-            const sanitizedShopName = profile.barber_shop_name.replace(/'/g, "\\'");
+    const profileHTML = `
+    <div class="bot-card">
+        <h3>👤 Mi Perfil</h3>
+        <div class="profile-avatar-wrapper">${avatarHTML}</div>
 
-            const profileHTML = `
-            <div class="bot-card">
-                <h3>👤 Mi Perfil</h3>
-                <ul>
-                    <li>
-                        <span class="item-name">Nombre:</span>
-                        <span class="item-detail">${profile.first_name} ${profile.last_name}</span>
-                    </li>
-                    <li>
-                        <span class="item-name">Nombre de la Barbería:</span>
-                        <span class="item-detail">${profile.barber_shop_name}</span>
-                    </li>
-                    <li>
-                        <span class="item-name">Tipo de Cuenta:</span>
-                        <span class="item-detail">${accountType}</span>
-                    </li>
-                    <li>
-                        <span class="item-name">Código para Clientes:</span>
-                        <span class="item-detail" style="font-weight: bold; color: #764ba2;">${profile.public_code}</span>
-                    </li>
-                </ul>
-                <p class="helper-text">Tus clientes usan este código para conectar con tu barbería.</p>
+        <div class="command-buttons-container" style="margin-bottom: 15px; grid-template-columns: 1fr 1fr;">
+            ${photoButtonsHTML}
+        </div>
 
-                <div class="command-buttons-container" style="margin-top: 15px; grid-template-columns: 1fr 1fr;">
-                    <button class="command-button" onclick="app.copyCodeToClipboard('${profile.public_code}', this)">📋 Copiar Código</button>
-                    
-                    <button class="command-button confirm" onclick="app.shareProfileCode('${profile.public_code}', '${sanitizedShopName}')">📲 Compartir</button>
-                </div>
-                
-                <div class="command-buttons-container" style="margin-top: 10px;">
-                    <button class="command-button full-width return" data-command="menu">↩️ Volver al Menú</button>
-                </div>
-            </div>`;
-            
-            this.addBotMessage(profileHTML);
-        }
+        <ul>
+            <li><span class="item-name">Nombre:</span><span class="item-detail">${profile.first_name} ${profile.last_name}</span></li>
+            <li><span class="item-name">Barbería:</span><span class="item-detail">${profile.barber_shop_name}</span></li>
+            <li><span class="item-name">Tipo de Cuenta:</span><span class="item-detail">${accountType}</span></li>
+            <li><span class="item-name">Código Clientes:</span><span class="item-detail" style="font-weight: bold; color: #764ba2;">${profile.public_code}</span></li>
+        </ul>
+        <p class="helper-text">Tus clientes usan este código para conectar contigo.</p>
+
+        <div class="command-buttons-container" style="margin-top: 15px; grid-template-columns: 1fr 1fr;">
+            <button class="command-button" onclick="app.copyCodeToClipboard('${profile.public_code}', this)">📋 Copiar Código</button>
+            <button class="command-button confirm" onclick="app.shareProfileCode('${profile.public_code}', '${sanitizedShopName}')">📲 Compartir</button>
+        </div>
+        <div class="command-buttons-container" style="margin-top: 10px;">
+            <button class="command-button full-width return" data-command="menu">↩️ Volver al Menú</button>
+        </div>
+    </div>`;
+
+    this.addBotMessage(profileHTML);
+}
         
         // Pega estas dos nuevas funciones en tu archivo index.html, dentro de la clase ChatApp
 
@@ -870,6 +919,118 @@ async savePushSubscription(subscription) {
                 this.addBotMessage('<div class="bot-card"><p>La función de compartir no está disponible en este navegador. Puedes copiar el código manualmente.</p></div>');
             }
         }
+        
+        
+// ... después de la función shareProfileCode ...
+
+triggerFileUpload() {
+    // Esta función simple activa el click en el input de archivo oculto
+    this.profilePicInput.click();
+}
+
+// REEMPLAZA ESTA FUNCIÓN COMPLETA EN TU CÓDIGO (index.html)
+async uploadProfilePicture(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Validaciones (estas ya las tienes y están bien)
+    const fileTypes = ['image/png', 'image/jpeg'];
+    if (!fileTypes.includes(file.type)) {
+        this.addBotMessage('<div class="bot-card"><p>❌ Formato no válido. Sube una imagen PNG o JPG.</p></div>');
+        return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+        this.addBotMessage('<div class="bot-card"><p>❌ La imagen es muy grande. El límite es de 5 MB.</p></div>');
+        return;
+    }
+
+    this.addBotMessage('<div class="bot-card"><p>Subiendo foto, por favor espera... ⏳</p></div>');
+    this.showTyping();
+
+    const bucketName = 'profile_pictures';
+    const filePath = `${this.currentUser.id}/profile.png`;
+
+    try {
+        // 1. Subir el archivo (esto no cambia)
+        const { error: uploadError } = await supabase.storage
+            .from(bucketName)
+            .upload(filePath, file, {
+                cacheControl: '3600',
+                upsert: true,
+            });
+
+        if (uploadError) throw uploadError;
+
+        // 2. Obtener la URL pública con el truco anti-caché (esto no cambia)
+        const { data: urlData } = supabase.storage
+            .from(bucketName)
+            .getPublicUrl(filePath);
+        const publicURLWithCacheBuster = `${urlData.publicUrl}?t=${new Date().getTime()}`;
+
+        // --- CAMBIO CLAVE: ACTUALIZAR Y OBTENER EN UN SOLO PASO ---
+        // Usamos .select().single() para que la operación nos devuelva el perfil actualizado.
+        const { data: updatedProfile, error: dbError } = await supabase
+            .from('barbers')
+            .update({ avatar_url: publicURLWithCacheBuster })
+            .eq('user_id', this.currentUser.id)
+            .select() // <-- Le decimos que nos devuelva la fila
+            .single(); // <-- Y que sea solo una
+
+        if (dbError) throw dbError;
+
+        // --- SEGUNDO CAMBIO CLAVE: ACTUALIZAR EL ESTADO LOCAL DIRECTAMENTE ---
+        // Ya no necesitamos llamar a refreshProfileFromDB(), porque ya tenemos los datos frescos.
+        this.barberProfile = updatedProfile;
+
+        this.addBotMessage('<div class="bot-card"><p>✅ ¡Foto de perfil actualizada con éxito!</p></div>');
+        await this.showBarberProfile(); // Ahora esta función usará el perfil garantizado 100% actualizado.
+
+    } catch (error) {
+        console.error("Error subiendo la foto:", error);
+        this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>❌ Hubo un error al subir tu foto:</strong><br><small>${error.message}</small></p></div>`);
+    } finally {
+        this.hideTyping();
+        this.profilePicInput.value = '';
+    }
+}
+
+async deleteProfilePicture() {
+    if (!confirm("¿Estás seguro de que quieres eliminar tu foto de perfil?")) return;
+
+    this.addBotMessage('<div class="bot-card"><p>Eliminando foto...</p></div>');
+    this.showTyping();
+
+    const filePath = `${this.currentUser.id}/profile.png`;
+
+    try {
+        // Eliminar de Supabase Storage
+        const { error: removeError } = await supabase.storage
+            .from('profile_pictures')
+            .remove([filePath]);
+
+        if (removeError) throw removeError;
+
+        // Eliminar la URL de la base de datos
+        const { error: dbError } = await supabase
+            .from('barbers')
+            .update({ avatar_url: null })
+            .eq('user_id', this.currentUser.id);
+
+        if (dbError) throw dbError;
+
+        await this.refreshProfileFromDB();
+        this.addBotMessage('<div class="bot-card"><p>✅ Foto eliminada correctamente.</p></div>');
+        await this.showBarberProfile();
+
+    } catch (error) {
+        console.error("Error eliminando la foto:", error);
+        this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error al eliminar tu foto: ${error.message}</p></div>`);
+    } finally {
+        this.hideTyping();
+    }
+}
+        
+        
 
         async showServices() {
             const barberName = this.userData.selectedBarber;
@@ -1439,5 +1600,3 @@ async loginUser(password) {
 </script>
 </body>
 </html>
-
-
