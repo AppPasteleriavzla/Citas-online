@@ -927,7 +927,8 @@ triggerFileUpload() {
     // Esta función simple activa el click en el input de archivo oculto
     this.profilePicInput.click();
 }
-// REEMPLAZA TU FUNCIÓN ACTUAL CON ESTA VERSIÓN MEJORADA
+
+// REEMPLAZA ESTA FUNCIÓN COMPLETA EN TU CÓDIGO (index.html)
 async uploadProfilePicture(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -938,67 +939,51 @@ async uploadProfilePicture(event) {
         this.addBotMessage('<div class="bot-card"><p>❌ Formato no válido. Sube una imagen PNG o JPG.</p></div>');
         return;
     }
-    if (file.size > 10 * 1024 * 1024) { // Aumentamos el límite original a 10MB
-        this.addBotMessage('<div class="bot-card"><p>❌ La imagen es muy grande. El límite es de 10 MB.</p></div>');
+    if (file.size > 5 * 1024 * 1024) {
+        this.addBotMessage('<div class="bot-card"><p>❌ La imagen es muy grande. El límite es de 5 MB.</p></div>');
         return;
     }
 
-    this.addBotMessage('<div class="bot-card"><p>Comprimiendo y subiendo foto, por favor espera... ⏳</p></div>');
+    this.addBotMessage('<div class="bot-card"><p>Subiendo foto, por favor espera... ⏳</p></div>');
     this.showTyping();
-
-    // --- ⭐ INICIO DE LA MEJORA DE COMPRESIÓN ⭐ ---
-    const options = {
-      maxSizeMB: 1,          // La imagen de salida no pesará más de 1 MB
-      maxWidthOrHeight: 1024,  // La dimensión más grande (ancho o alto) será de 1024px
-      useWebWorker: true,      // Usa un hilo secundario para no congelar la interfaz
-      initialQuality: 0.8      // Empieza con una calidad del 80%
-    }
-    
-    let compressedFile;
-    try {
-        compressedFile = await imageCompression(file, options);
-        console.log(`Imagen original: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
-        console.log(`Imagen comprimida: ${(compressedFile.size / 1024 / 1024).toFixed(2)} MB`);
-    } catch (error) {
-        console.error('Error durante la compresión:', error);
-        this.hideTyping();
-        this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>❌ Hubo un error al comprimir tu foto:</strong><br><small>${error.message}</small></p></div>`);
-        return;
-    }
-    // --- ⭐ FIN DE LA MEJORA DE COMPRESIÓN ⭐ ---
 
     const bucketName = 'profile_pictures';
     const filePath = `${this.currentUser.id}/profile.png`;
 
     try {
-        // Ahora, en lugar de subir "file", subimos "compressedFile"
+        // 1. Subir el archivo (esto no cambia)
         const { error: uploadError } = await supabase.storage
             .from(bucketName)
-            .upload(filePath, compressedFile, { // <-- ¡AQUÍ ESTÁ EL CAMBIO!
+            .upload(filePath, file, {
                 cacheControl: '3600',
                 upsert: true,
             });
 
         if (uploadError) throw uploadError;
 
-        // El resto del código no cambia
+        // 2. Obtener la URL pública con el truco anti-caché (esto no cambia)
         const { data: urlData } = supabase.storage
             .from(bucketName)
             .getPublicUrl(filePath);
         const publicURLWithCacheBuster = `${urlData.publicUrl}?t=${new Date().getTime()}`;
 
+        // --- CAMBIO CLAVE: ACTUALIZAR Y OBTENER EN UN SOLO PASO ---
+        // Usamos .select().single() para que la operación nos devuelva el perfil actualizado.
         const { data: updatedProfile, error: dbError } = await supabase
             .from('barbers')
             .update({ avatar_url: publicURLWithCacheBuster })
             .eq('user_id', this.currentUser.id)
-            .select()
-            .single();
+            .select() // <-- Le decimos que nos devuelva la fila
+            .single(); // <-- Y que sea solo una
 
         if (dbError) throw dbError;
 
+        // --- SEGUNDO CAMBIO CLAVE: ACTUALIZAR EL ESTADO LOCAL DIRECTAMENTE ---
+        // Ya no necesitamos llamar a refreshProfileFromDB(), porque ya tenemos los datos frescos.
         this.barberProfile = updatedProfile;
+
         this.addBotMessage('<div class="bot-card"><p>✅ ¡Foto de perfil actualizada con éxito!</p></div>');
-        await this.showBarberProfile();
+        await this.showBarberProfile(); // Ahora esta función usará el perfil garantizado 100% actualizado.
 
     } catch (error) {
         console.error("Error subiendo la foto:", error);
@@ -1615,4 +1600,3 @@ async loginUser(password) {
 </script>
 </body>
 </html>
-
