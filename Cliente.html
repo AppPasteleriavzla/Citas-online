@@ -103,6 +103,23 @@
             overflow: hidden; /* Para que el video no se salga del borde redondeado */
             margin-top: 10px;
         }
+
+        /* --- ESTILOS PARA LA FOTO DE PERFIL DEL BARBERO (NUEVO) --- */
+.profile-picture-container {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%; /* La clave para hacerlo circular */
+    overflow: hidden; /* Oculta las esquinas de la imagen */
+    flex-shrink: 0; /* Evita que el contenedor se encoja si el nombre es largo */
+    border: 2px solid rgba(255, 255, 255, 0.8); /* Borde blanco semitransparente */
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.barber-profile-pic {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* Asegura que la imagen cubra el círculo sin deformarse */
+}
     </style>
 </head>
 <body>
