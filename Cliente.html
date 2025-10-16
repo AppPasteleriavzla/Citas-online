@@ -678,14 +678,35 @@ async confirmAndCreateBooking() {
                 }
             }
 
-            updateHeader() {
-                this.chatHeader.innerHTML = `<div id="header-title"><h1>${this.barberData.barber_shop_name}</h1><p>Asistente de Citas</p></div><div class="header-icons"><div class="icon-wrapper" id="messagesIconWrapper" title="Ver mensajes"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 10H6v-2h12v2zm0-4H6V6h12v2z"></path></svg><span class="notification-badge" id="notificationBadge"></span></div></div>`;
-                this.notificationBadge = document.getElementById('notificationBadge');
-                this.messagesIconWrapper = document.getElementById('messagesIconWrapper');
-                this.messagesIconWrapper.addEventListener('click', () => {
-                    if (this.unreadCount > 0) this.enterLiveChatMode();
-                });
-            }
+updateHeader() {
+    // --- LÓGICA DEL AVATAR ---
+    let avatarHTML = '';
+    if (this.barberData.avatar_url) {
+        avatarHTML = `
+            <div class="header-avatar">
+                <img src="${this.barberData.avatar_url}" alt="${this.barberData.barber_shop_name}">
+            </div>`;
+    }
+
+    this.chatHeader.innerHTML = `
+        ${avatarHTML}
+        <div id="header-title">
+            <h1>${this.barberData.barber_shop_name}</h1>
+            <p>Asistente de Citas</p>
+        </div>
+        <div class="header-icons" style="margin-left: auto;"> <div class="icon-wrapper" id="messagesIconWrapper" title="Ver mensajes">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 10H6v-2h12v2zm0-4H6V6h12v2z"></path></svg>
+                <span class="notification-badge" id="notificationBadge"></span>
+            </div>
+        </div>`;
+    
+    // Volver a asignar los elementos del DOM que se recrearon
+    this.notificationBadge = document.getElementById('notificationBadge');
+    this.messagesIconWrapper = document.getElementById('messagesIconWrapper');
+    this.messagesIconWrapper.addEventListener('click', () => {
+        if (this.unreadCount > 0) this.enterLiveChatMode();
+    });
+}
 
             showClientMainMenu() {
                 const menuHTML = `<div class="bot-card"><h3>Menú Principal</h3><p>¿Cómo puedo ayudarte hoy?</p><div class="command-buttons-container">
