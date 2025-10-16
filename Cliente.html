@@ -11,16 +11,20 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; height: 100vh; display: flex; justify-content: center; align-items: center; }
         .chat-container { width: 100%; max-width: 400px; height: 100vh; background: white; display: flex; flex-direction: column; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        .chat-header { 
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); 
-            color: white; 
-            padding: 20px; 
-            text-align: center; 
-            position: relative; 
+        
+        /* --- ENCABEZADO MODIFICADO --- */
+        .chat-header {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            padding: 10px 15px; /* Reducimos un poco el padding para que se vea mejor */
+            text-align: left; /* Alineamos el texto a la izquierda */
+            position: relative;
             display: flex;
-            justify-content: center;
+            justify-content: flex-start; /* Alineamos los elementos al inicio */
             align-items: center;
+            gap: 15px; /* Añadimos un espacio entre la foto y el texto */
         }
+        
         .chat-header h1 { margin: 0; font-size: 1.5em; }
         .chat-header p { margin: 5px 0 0 0; opacity: 0.9; font-size: 0.9em; }
         .messages-container { flex: 1; padding: 15px; overflow-y: auto; background: #f8f9fa; min-height: 0; }
@@ -105,21 +109,21 @@
         }
 
         /* --- ESTILOS PARA LA FOTO DE PERFIL DEL BARBERO (NUEVO) --- */
-.profile-picture-container {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%; /* La clave para hacerlo circular */
-    overflow: hidden; /* Oculta las esquinas de la imagen */
-    flex-shrink: 0; /* Evita que el contenedor se encoja si el nombre es largo */
-    border: 2px solid rgba(255, 255, 255, 0.8); /* Borde blanco semitransparente */
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-}
+        .profile-picture-container {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%; /* La clave para hacerlo circular */
+            overflow: hidden; /* Oculta las esquinas de la imagen */
+            flex-shrink: 0; /* Evita que el contenedor se encoja si el nombre es largo */
+            border: 2px solid rgba(255, 255, 255, 0.8); /* Borde blanco semitransparente */
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
 
-.barber-profile-pic {
-    width: 100%;
-    height: 100%;
-    object-fit: cover; /* Asegura que la imagen cubra el círculo sin deformarse */
-}
+        .barber-profile-pic {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Asegura que la imagen cubra el círculo sin deformarse */
+        }
     </style>
 </head>
 <body>
@@ -589,38 +593,31 @@
                 this.currentFlow = 'booking_confirmation';
             }
             
-            // Dentro de la clase ClientChatApp en Cliente.html
+            async confirmAndCreateBooking() {
+                this.showTyping();
+                const payload = { 
+                    barber_id: this.barberData.id, 
+                    client_id: this.clientProfile.id, 
+                    service_name: this.bookingData.service.name, 
+                    price: this.bookingData.service.price, 
+                    booking_date: this.bookingData.finalTimestamp.toISOString(), 
+                    status: 'confirmed', 
+                    barber_name: this.bookingData.barberName 
+                };
 
-async confirmAndCreateBooking() {
-    this.showTyping();
-    const payload = { 
-        barber_id: this.barberData.id, 
-        client_id: this.clientProfile.id, 
-        service_name: this.bookingData.service.name, 
-        price: this.bookingData.service.price, 
-        booking_date: this.bookingData.finalTimestamp.toISOString(), 
-        status: 'confirmed', 
-        barber_name: this.bookingData.barberName 
-    };
-
-    const { error } = await supabase.from('bookings').insert(payload);
-    
-    this.hideTyping();
-    
-    if (error) {
-        // --- MODIFICACIÓN IMPORTANTE ---
-        // Añade estas líneas para ver el error detallado en la consola del navegador
-        console.error('Error al crear la reserva en Supabase:', error);
-        
-        // Muestra un mensaje más informativo en la interfaz (opcional pero recomendado)
-        this.addBotMessage(`<div class="bot-card"><p>Lo siento, ocurrió un error al crear tu reserva. <br><small>Detalle: ${error.message}</small></p>${this.mainMenuButton}</div>`);
-        // --- FIN DE LA MODIFICACIÓN ---
-    } else {
-        this.addBotMessage('<div class="bot-card"><p>✅ ¡Tu reserva ha sido confirmada con éxito!</p></div>');
-    }
-    this.bookingData = {};
-    setTimeout(() => this.showClientMainMenu(), 1500);
-}
+                const { error } = await supabase.from('bookings').insert(payload);
+                
+                this.hideTyping();
+                
+                if (error) {
+                    console.error('Error al crear la reserva en Supabase:', error);
+                    this.addBotMessage(`<div class="bot-card"><p>Lo siento, ocurrió un error al crear tu reserva. <br><small>Detalle: ${error.message}</small></p>${this.mainMenuButton}</div>`);
+                } else {
+                    this.addBotMessage('<div class="bot-card"><p>✅ ¡Tu reserva ha sido confirmada con éxito!</p></div>');
+                }
+                this.bookingData = {};
+                setTimeout(() => this.showClientMainMenu(), 1500);
+            }
 
             async checkConnection() {
                 const storedCode = localStorage.getItem('barber_code');
@@ -695,35 +692,44 @@ async confirmAndCreateBooking() {
                 }
             }
 
-updateHeader() {
-    // --- LÓGICA DEL AVATAR ---
-    let avatarHTML = '';
-    if (this.barberData.avatar_url) {
-        avatarHTML = `
-            <div class="header-avatar">
-                <img src="${this.barberData.avatar_url}" alt="${this.barberData.barber_shop_name}">
-            </div>`;
-    }
+            // --- FUNCIÓN DE JAVASCRIPT MODIFICADA ---
+            updateHeader() {
+                let avatarHTML = '';
+                if (this.barberData.avatar_url) {
+                    // Si hay una foto de perfil, la mostramos
+                    avatarHTML = `
+                        <div class="profile-picture-container">
+                            <img src="${this.barberData.avatar_url}" alt="Perfil de ${this.barberData.barber_shop_name}" class="barber-profile-pic">
+                        </div>`;
+                } else {
+                    // Si NO hay foto, mostramos un círculo con la inicial del nombre
+                    const initial = this.barberData.barber_shop_name ? this.barberData.barber_shop_name.charAt(0).toUpperCase() : 'B';
+                    avatarHTML = `
+                        <div class="profile-picture-container" style="display:flex; align-items:center; justify-content:center; background-color:#fff; color:#0056b3; font-size: 1.8em; font-weight: bold;">
+                           <span>${initial}</span>
+                        </div>`;
+                }
 
-    this.chatHeader.innerHTML = `
-        ${avatarHTML}
-        <div id="header-title">
-            <h1>${this.barberData.barber_shop_name}</h1>
-            <p>Asistente de Citas</p>
-        </div>
-        <div class="header-icons" style="margin-left: auto;"> <div class="icon-wrapper" id="messagesIconWrapper" title="Ver mensajes">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 10H6v-2h12v2zm0-4H6V6h12v2z"></path></svg>
-                <span class="notification-badge" id="notificationBadge"></span>
-            </div>
-        </div>`;
-    
-    // Volver a asignar los elementos del DOM que se recrearon
-    this.notificationBadge = document.getElementById('notificationBadge');
-    this.messagesIconWrapper = document.getElementById('messagesIconWrapper');
-    this.messagesIconWrapper.addEventListener('click', () => {
-        if (this.unreadCount > 0) this.enterLiveChatMode();
-    });
-}
+                this.chatHeader.innerHTML = `
+                    ${avatarHTML}
+                    <div id="header-title" style="margin-right: auto;">
+                        <h1 style="font-size: 1.2em; margin: 0;">${this.barberData.barber_shop_name}</h1>
+                        <p style="font-size: 0.8em; opacity: 0.9; margin: 0;">Asistente de Citas</p>
+                    </div>
+                    <div class="header-icons">
+                        <div class="icon-wrapper" id="messagesIconWrapper" title="Ver mensajes">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 10H6v-2h12v2zm0-4H6V6h12v2z"></path></svg>
+                            <span class="notification-badge" id="notificationBadge"></span>
+                        </div>
+                    </div>`;
+                
+                // Volver a asignar los elementos del DOM que se recrearon
+                this.notificationBadge = document.getElementById('notificationBadge');
+                this.messagesIconWrapper = document.getElementById('messagesIconWrapper');
+                this.messagesIconWrapper.addEventListener('click', () => {
+                    if (this.unreadCount > 0) this.enterLiveChatMode();
+                });
+            }
 
             showClientMainMenu() {
                 const menuHTML = `<div class="bot-card"><h3>Menú Principal</h3><p>¿Cómo puedo ayudarte hoy?</p><div class="command-buttons-container">
