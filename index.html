@@ -279,15 +279,10 @@
             await this.checkAuthState();
         }
 
-        // --- INICIO DE LA MEJORA: FUNCIÓN PARA CAPITALIZAR ---
         capitalizeName(name) {
             if (!name) return '';
-            // Convierte todo a minúsculas, divide por espacios, y luego
-            // para cada palabra, toma la primera letra, la pone en mayúscula,
-            // y la une con el resto de la palabra. Finalmente, une las palabras de nuevo.
             return name.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
         }
-        // --- FIN DE LA MEJORA ---
 
         async registerServiceWorker() {
             if (!('Notification' in window) || !('serviceWorker' in navigator)) {
@@ -469,9 +464,6 @@
             const text = this.messageInput.value.trim();
             if (!text || this.isTyping) return;
             this.messageInput.value = '';
-            // --- MEJORA APLICADA AQUÍ ---
-            // Pasamos la versión minúscula para comandos (primer parámetro)
-            // y la versión original para guardar datos (segundo parámetro)
             if (this.activeView === 'bot') { this.addUserMessage(text); await this.processUserInput(text.toLowerCase(), text); }
             else if (this.activeView === 'singleChat') { await this.sendClientMessage(text); }
         }
@@ -518,19 +510,12 @@
                 case 'servicio_add_price':
                     await this.addService(this.userData.tempServiceName, input);
                     break;
-                
-                // --- MEJORA APLICADA AQUÍ ---
-                // Se usa 'originalText' para preservar mayúsculas
                 case 'adding_barber_name':
                     await this.addNewBarberToJSON(originalText.trim());
                     break;
-                
-                // --- MEJORA APLICADA AQUÍ ---
-                // Se usa 'originalText' para preservar mayúsculas
                 case 'editing_shop_name':
                     await this.updateShopName(originalText.trim());
                     break;
-
                 case 'authenticated':
                     await this.handleAuthenticatedCommand(input);
                     break;
@@ -703,8 +688,6 @@
         }
 
         async addNewBarberToJSON(barberName) {
-            // --- MEJORA APLICADA AQUÍ ---
-            // Se formatea el nombre para asegurar mayúsculas correctas
             const formattedName = this.capitalizeName(barberName);
             if (!formattedName) { this.addBotMessage('<div class="bot-card"><p>El nombre no puede estar vacío.</p></div>'); return; }
             this.showTyping();
@@ -772,14 +755,17 @@
         async showBarberProfile() {
             this.showTyping();
             const profile = this.getBarberProfile();
-            await new Promise(resolve => setTimeout(resolve, 500)); 
+            await new Promise(resolve => setTimeout(resolve, 500));
             this.hideTyping();
+        
             if (!profile) {
                 this.addBotMessage('<div class="bot-card"><p>❌ No pude cargar tu perfil. Intenta recargar la página.</p></div>');
                 return;
             }
+        
             const accountType = profile.is_team_account ? 'Equipo (Múltiples Barberos)' : 'Individual';
             const sanitizedShopName = profile.barber_shop_name.replace(/'/g, "\\'");
+        
             let avatarHTML = '';
             if (profile.avatar_url) {
                 avatarHTML = `<div class="profile-avatar"><img src="${profile.avatar_url}" alt="Foto de Perfil"></div>`;
@@ -787,6 +773,7 @@
                 const initial = profile.first_name ? profile.first_name.charAt(0).toUpperCase() : '?';
                 avatarHTML = `<div class="profile-avatar"><span>${initial}</span></div>`;
             }
+        
             let photoButtonsHTML = '';
             if (profile.avatar_url) {
                 photoButtonsHTML = `
@@ -798,26 +785,31 @@
                     <button class="command-button full-width confirm" onclick="app.triggerFileUpload()">📸 Subir Foto de Perfil</button>
                 `;
             }
+        
+            // --- INICIO DE LA CORRECCIÓN VISUAL ---
             const profileHTML = `
             <div class="bot-card">
                 <h3>👤 Mi Perfil</h3>
                 <div class="profile-avatar-wrapper">${avatarHTML}</div>
+        
                 <div class="command-buttons-container" style="margin-bottom: 15px; grid-template-columns: 1fr 1fr;">
                     ${photoButtonsHTML}
                 </div>
+        
                 <ul>
                     <li><span class="item-name">Nombre:</span><span class="item-detail">${profile.first_name} ${profile.last_name}</span></li>
-                    <li>
+                    
+                    <li style="display: flex; align-items: center;">
                         <span class="item-name">Barbería:</span>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                             <span class="item-detail">${profile.barber_shop_name}</span>
-                             <button class="command-button" data-command="/editar_shop_name" style="padding: 4px 10px; font-size: 0.85em; flex-shrink: 0;">Editar</button>
-                        </div>
+                        <span class="item-detail" style="margin-left: 1rem; text-align: left;">${profile.barber_shop_name}</span>
+                        <button class="command-button" data-command="/editar_shop_name" style="padding: 4px 10px; font-size: 0.85em; flex-shrink: 0; margin-left: auto;">Editar</button>
                     </li>
+        
                     <li><span class="item-name">Tipo de Cuenta:</span><span class="item-detail">${accountType}</span></li>
                     <li><span class="item-name">Código Clientes:</span><span class="item-detail" style="font-weight: bold; color: #764ba2;">${profile.public_code}</span></li>
                 </ul>
                 <p class="helper-text">Tus clientes usan este código para conectar contigo.</p>
+        
                 <div class="command-buttons-container" style="margin-top: 15px; grid-template-columns: 1fr 1fr;">
                     <button class="command-button" onclick="app.copyCodeToClipboard('${profile.public_code}', this)">📋 Copiar Código</button>
                     <button class="command-button confirm" onclick="app.shareProfileCode('${profile.public_code}', '${sanitizedShopName}')">📲 Compartir</button>
@@ -826,6 +818,8 @@
                     <button class="command-button full-width return" data-command="menu">↩️ Volver al Menú</button>
                 </div>
             </div>`;
+            // --- FIN DE LA CORRECCIÓN VISUAL ---
+        
             this.addBotMessage(profileHTML);
         }
         
@@ -941,8 +935,6 @@
         }
         
         async updateShopName(newName) {
-            // --- MEJORA APLICADA AQUÍ ---
-            // Se formatea el nombre para asegurar mayúsculas correctas
             const formattedName = this.capitalizeName(newName);
             if (!formattedName || formattedName.length < 3) {
                 this.addBotMessage('<div class="bot-card"><p>❌ El nombre es muy corto. Por favor, introduce un nombre válido.</p></div>');
@@ -1400,11 +1392,8 @@
         }
         
         async registerUser() {
-            // --- MEJORA APLICADA AQUÍ ---
-            // Se capitalizan los nombres antes de enviarlos a la base de datos
             const firstNameFormatted = this.capitalizeName(this.userData.firstName);
             const lastNameFormatted = this.capitalizeName(this.userData.lastName);
-
             const { data, error } = await supabase.auth.signUp({
                 email: this.userData.email,
                 password: this.userData.password,
@@ -1432,7 +1421,6 @@
         
         async createBarberProfile(userId) {
             const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-            // --- MEJORA APLICADA AQUÍ ---
             const barberName = this.capitalizeName(this.userData.firstName);
             const shopName = `Barbería de ${barberName}`;
             const initialAvailability = { [barberName]: {} };
