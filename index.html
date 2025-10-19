@@ -232,7 +232,7 @@
             this.activeChat = { id: null, clientName: null, clientId: null };
             
             this.unreadCounts = {};
-            this.newBookingsCount = 0;
+            this.newBookingsData = []; // <-- MODIFICADO
             this.newTransactionsCount = 0;
 
             this.chatSubscription = null;
@@ -271,10 +271,9 @@
 
             this.chatsIconWrapper.addEventListener('click', () => this.showClientChats());
             
+            // --- BLOQUE MODIFICADO ---
             this.bookingsIconWrapper.addEventListener('click', () => {
-                this.showAllBookings();
-                this.newBookingsCount = 0;
-                this.updateBadges();
+                this.showNewBookings();
             });
 
             this.financeIconWrapper.addEventListener('click', () => {
@@ -413,8 +412,9 @@ async savePushSubscription(subscription) {
                 this.chatsBadge.classList.remove('visible');
             }
 
-            if (this.newBookingsCount > 0) {
-                this.bookingsBadge.textContent = this.newBookingsCount > 9 ? '9+' : this.newBookingsCount;
+            // --- BLOQUE MODIFICADO ---
+            if (this.newBookingsData.length > 0) {
+                this.bookingsBadge.textContent = this.newBookingsData.length > 9 ? '9+' : this.newBookingsData.length;
                 this.bookingsBadge.classList.add('visible');
             } else {
                 this.bookingsBadge.classList.remove('visible');
@@ -1099,6 +1099,73 @@ async deleteProfilePicture() {
             this.addBotMessage(`<div class="bot-card"><h3>📅 Mis Citas Programadas</h3><ul>${bookingsList}</ul>${backButtonHTML}</div>`);
         }
 
+        // --- FUNCIÓN NUEVA AÑADIDA ---
+        async showNewBookings() {
+            this.switchView('botView'); // Asegurarnos de estar en la vista del bot
+            
+            // Copiamos las reservas nuevas y limpiamos el contador INMEDIATAMENTE
+            const bookingsToProcess = [...this.newBookingsData];
+            this.newBookingsData = [];
+            this.updateBadges();
+
+            const backButtonHTML = `<div class="command-buttons-container" style="margin-top: 15px;"><button class="command-button full-width return" data-command="menu">↩️ Volver al Menú</button></div>`;
+
+            // Si no había reservas nuevas
+            if (bookingsToProcess.length === 0) {
+                this.addBotMessage(`<div class="bot-card"><h3>🔔 Notificaciones de Citas</h3><p>No tienes ninguna cita nueva en este momento.</p><hr style="border: 0; border-top: 1px solid #f1f3f5; margin: 10px 0;"><p style="font-size: 0.9em; color: #666;">Para ver todas tus citas (nuevas y antiguas), usa el comando <strong>/citas</strong>.</p>${backButtonHTML}</div>`);
+                return;
+            }
+
+            this.showTyping();
+
+            // El 'payload' de la subscripción no trae el nombre del cliente, solo el ID.
+            // Necesitamos consultar los nombres de los clientes.
+            const clientIds = [...new Set(bookingsToProcess.map(b => b.client_id))];
+            
+            const { data: clients, error } = await supabase
+                .from('clients')
+                .select('id, first_name, last_name')
+                .in('id', clientIds);
+
+            this.hideTyping();
+
+            if (error) {
+                 this.addBotMessage(`<div class"bot-card"><p>❌ Error al cargar los nombres de los clientes para las notificaciones.</p>${backButtonHTML}</div>`);
+                 return;
+            }
+
+            // Creamos un "mapa" para buscar nombres por ID fácilmente
+            const clientMap = new Map(clients.map(c => [c.id, `${c.first_name} ${c.last_name}`]));
+
+            // Creamos el HTML para cada notificación de reserva
+            const bookingsListHTML = bookingsToProcess.map(b => {
+                const date = new Date(b.booking_date);
+                const clientName = clientMap.get(b.client_id) || 'Cliente Desconocido';
+                const formattedDate = date.toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: 'short' });
+                const formattedTime = date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                const barberPerformer = b.barber_name || 'Staff'; // Usamos el barbero asignado
+
+                return `<li>
+                    <span class="item-name">${b.service_name} con <strong>${clientName}</strong> (Atiende: ${barberPerformer})</span>
+                    <span class="item-detail">${formattedDate} - ${formattedTime}</span>
+                </li>`;
+            }).join('');
+
+            // Construimos la tarjeta "modal" final
+            const finalCard = `
+            <div class="bot-card">
+                <h3>🔔 ¡${bookingsToProcess.length} Cita(s) Nueva(s)!</h3>
+                <p>Aquí están los detalles de las nuevas reservas:</p>
+                <ul>${bookingsListHTML}</ul>
+                <div class="command-buttons-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px;">
+                    <button class="command-button" data-command="/citas">Ver Todas las Citas</button>
+                    <button class="command-button return" data-command="menu">Volver al Menú</button>
+                </div>
+            </div>`;
+
+            this.addBotMessage(finalCard);
+        }
+
         async promptDateForAvailability() {
             const today = new Date();
             const tomorrow = new Date();
@@ -1506,7 +1573,8 @@ async loginUser(password) {
                     table: 'bookings',
                     filter: `barber_id=eq.${this.barberProfile.id}`
                 }, payload => {
-                    this.newBookingsCount++;
+                    // --- BLOQUE MODIFICADO ---
+                    this.newBookingsData.push(payload.new);
                     this.updateBadges();
                 })
                 .subscribe();
