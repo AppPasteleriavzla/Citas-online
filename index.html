@@ -557,6 +557,12 @@ async savePushSubscription(subscription) {
                     await this.addNewBarberToJSON(input.trim());
                     break;
                 
+                // --- CÓDIGO AÑADIDO ---
+                case 'editing_shop_name':
+                    await this.updateShopName(input.trim());
+                    break;
+                // --- FIN DEL CÓDIGO AÑADIDO ---
+
                 case 'authenticated':
                     await this.handleAuthenticatedCommand(input);
                     break;
@@ -577,6 +583,14 @@ async savePushSubscription(subscription) {
                 case '/cerrar': await this.logout(); break;
                 case '/finanzas': await this.showFinanceMenu(); break;
                 case '/generar_qr': await this.promptForQRCodeGeneration(); break;
+                
+                // --- CÓDIGO AÑADIDO ---
+                case '/editar_shop_name':
+                    this.addBotMessage('<div class="bot-card"><p>Introduce el nuevo nombre para tu barbería:</p></div>');
+                    this.currentFlow = 'editing_shop_name';
+                    break;
+                // --- FIN DEL CÓDIGO AÑADIDO ---
+
                 case 'menu': case 'menú': this.showMainMenu(); break;
                 
                 // --- NUEVO COMANDO AÑADIDO ---
@@ -859,7 +873,14 @@ async showBarberProfile() {
 
         <ul>
             <li><span class="item-name">Nombre:</span><span class="item-detail">${profile.first_name} ${profile.last_name}</span></li>
-            <li><span class="item-name">Barbería:</span><span class="item-detail">${profile.barber_shop_name}</span></li>
+            
+            <li>
+                <span class="item-name">Barbería:</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                     <span class="item-detail">${profile.barber_shop_name}</span>
+                     <button class="command-button" data-command="/editar_shop_name" style="padding: 4px 10px; font-size: 0.85em; flex-shrink: 0;">Editar</button>
+                </div>
+            </li>
             <li><span class="item-name">Tipo de Cuenta:</span><span class="item-detail">${accountType}</span></li>
             <li><span class="item-name">Código Clientes:</span><span class="item-detail" style="font-weight: bold; color: #764ba2;">${profile.public_code}</span></li>
         </ul>
@@ -1030,6 +1051,39 @@ async deleteProfilePicture() {
         this.hideTyping();
     }
 }
+
+        // --- FUNCIÓN AÑADIDA PARA LA MEJORA ---
+        async updateShopName(newName) {
+            if (!newName || newName.length < 3) {
+                this.addBotMessage('<div class="bot-card"><p>❌ El nombre es muy corto. Por favor, introduce un nombre válido.</p></div>');
+                this.currentFlow = 'authenticated';
+                await this.showBarberProfile(); // Vuelve a mostrar el perfil
+                return;
+            }
+
+            this.showTyping();
+            
+            const { data, error } = await supabase
+                .from('barbers')
+                .update({ barber_shop_name: newName })
+                .eq('user_id', this.currentUser.id)
+                .select()
+                .single();
+
+            this.hideTyping();
+            this.currentFlow = 'authenticated';
+
+            if (error) {
+                console.error("Error updating shop name:", error);
+                this.addBotMessage('<div class="bot-card"><p>❌ Hubo un error al actualizar el nombre de la barbería.</p></div>');
+            } else {
+                this.barberProfile = data; // Actualiza el perfil local con la data que retorna
+                this.addBotMessage('<div class="bot-card"><p>✅ ¡Nombre de la barbería actualizado con éxito!</p></div>');
+            }
+            
+            // Mostramos el perfil actualizado
+            await this.showBarberProfile();
+        }
         
         
 
