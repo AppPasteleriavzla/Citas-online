@@ -903,8 +903,9 @@ async showBarberProfile() {
             const shareData = {
                 title: `Código para ${shopName}`,
                 text: `¡Hola! Usa este código para conectar con nuestra barbería "${shopName}" en BarberConnect: ${code}`,
-                url: window.location.href // Puedes poner la URL de tu app para clientes aquí
+                url: window.location.origin + '/Cliente.html' // <-- ¡Esta es la corrección!
             };
+
 
             // Comprueba si el navegador soporta la API de compartir
             if (navigator.share && navigator.canShare(shareData)) {
