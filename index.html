@@ -232,7 +232,7 @@
             this.activeChat = { id: null, clientName: null, clientId: null };
             
             this.unreadCounts = {};
-            this.newBookingsData = []; // <-- MODIFICADO
+            this.newBookingsData = [];
             this.newTransactionsCount = 0;
 
             this.chatSubscription = null;
@@ -252,8 +252,6 @@
             this.bookingsBadge = document.getElementById('bookingsBadge');
             this.financeBadge = document.getElementById('financeBadge');
             
-
-            
             this.chatsIconWrapper = document.getElementById('chatsIconWrapper');
             this.profilePicInput = document.getElementById('profilePicInput');
             
@@ -268,96 +266,75 @@
             this.messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') this.handleSend(); });
             this.messagesContainer.addEventListener('click', this.handleButtonClick.bind(this));
             this.backButton.addEventListener('click', () => this.handleBack());
-
             this.chatsIconWrapper.addEventListener('click', () => this.showClientChats());
-            
-            // --- BLOQUE MODIFICADO ---
             this.bookingsIconWrapper.addEventListener('click', () => {
                 this.showNewBookings();
             });
-
             this.financeIconWrapper.addEventListener('click', () => {
                 this.showFinanceMenu();
                 this.newTransactionsCount = 0;
                 this.updateBadges();
             });
-            
-            
-            
             this.profilePicInput.addEventListener('change', (event) => this.uploadProfilePicture(event));
-
-
             await this.checkAuthState();
-
-            // --- BLOQUE ELIMINADO ---
-            // Se ha quitado la llamada automática a registerServiceWorker de aquí
         }
 
-
-
-        // ⬇️ REEMPLAZA TU FUNCIÓN ACTUAL POR ESTA VERSIÓN MEJORADA ⬇️
-async registerServiceWorker() {
-    // Primero, verificamos que el navegador soporte notificaciones.
-    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
-        this.addBotMessage('<div class="bot-card" style="background-color: #ffdddd;"><p><strong>No Soportado.</strong> Tu navegador no es compatible con las notificaciones push.</p></div>');
-        return;
-    }
-
-    // Verificamos el estado actual del permiso SIN pedirlo todavía.
-    const currentPermission = Notification.permission;
-
-    if (currentPermission === 'granted') {
-        this.addBotMessage('<div class="bot-card" style="background-color: #ddffdd;"><p><strong>¡Ya estás suscrito!</strong> ✅ No es necesario volver a activar las notificaciones.</p></div>');
-        return; // Salimos de la función porque ya está todo listo.
-    }
-
-    if (currentPermission === 'denied') {
-        this.addBotMessage('<div class="bot-card" style="background-color: #ffffcc;"><p><strong>Permiso Bloqueado.</strong> 🚫 Has bloqueado las notificaciones para esta app. Para activarlas, necesitas cambiar los permisos desde la configuración de tu navegador.</p></div>');
-        return; // Salimos porque el usuario las tiene bloqueadas.
-    }
-
-    // Si el permiso es 'default', entonces sí procedemos a solicitarlo.
-    this.showTyping();
-    try {
-        const swRegistration = await navigator.serviceWorker.register('./sw.js');
-        console.log("Notificaciones: Service Worker registrado con éxito.", swRegistration);
-
-        // AHORA SÍ PEDIMOS EL PERMISO
-        const permissionResult = await window.Notification.requestPermission();
-
-        if (permissionResult !== 'granted') {
-            console.warn("Notificaciones: El usuario no concedió el permiso.");
-            this.hideTyping();
-            this.addBotMessage('<div class="bot-card" style="background-color: #ffffcc;"><p><strong>Permiso denegado.</strong> No podré enviarte notificaciones si no aceptas el permiso en la ventana de tu navegador.</p></div>');
-            return;
+        // --- INICIO DE LA MEJORA: FUNCIÓN PARA CAPITALIZAR ---
+        capitalizeName(name) {
+            if (!name) return '';
+            // Convierte todo a minúsculas, divide por espacios, y luego
+            // para cada palabra, toma la primera letra, la pone en mayúscula,
+            // y la une con el resto de la palabra. Finalmente, une las palabras de nuevo.
+            return name.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
         }
-        
-        console.log("Notificaciones: Permiso concedido. Obteniendo suscripción push...");
-        let pushSubscription = await swRegistration.pushManager.getSubscription();
+        // --- FIN DE LA MEJORA ---
 
-        if (pushSubscription === null) {
-            console.log("Notificaciones: No se encontró suscripción, creando una nueva...");
-            const vapidPublicKey = 'BJCOJ2WGEu7_29mhcE56t5zkmkmO2phKSVEELfWjTVe1RtmeZOZ5LWZfMyNWpWo7q7jNhBqezFf5MQFNq9NYSqA';
-            pushSubscription = await swRegistration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
-            });
-            console.log("Notificaciones: Nueva suscripción creada.");
-        } else {
-            console.log("Notificaciones: Se encontró una suscripción existente.");
+        async registerServiceWorker() {
+            if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+                this.addBotMessage('<div class="bot-card" style="background-color: #ffdddd;"><p><strong>No Soportado.</strong> Tu navegador no es compatible con las notificaciones push.</p></div>');
+                return;
+            }
+            const currentPermission = Notification.permission;
+            if (currentPermission === 'granted') {
+                this.addBotMessage('<div class="bot-card" style="background-color: #ddffdd;"><p><strong>¡Ya estás suscrito!</strong> ✅ No es necesario volver a activar las notificaciones.</p></div>');
+                return;
+            }
+            if (currentPermission === 'denied') {
+                this.addBotMessage('<div class="bot-card" style="background-color: #ffffcc;"><p><strong>Permiso Bloqueado.</strong> 🚫 Has bloqueado las notificaciones para esta app. Para activarlas, necesitas cambiar los permisos desde la configuración de tu navegador.</p></div>');
+                return;
+            }
+            this.showTyping();
+            try {
+                const swRegistration = await navigator.serviceWorker.register('./sw.js');
+                console.log("Notificaciones: Service Worker registrado con éxito.", swRegistration);
+                const permissionResult = await window.Notification.requestPermission();
+                if (permissionResult !== 'granted') {
+                    console.warn("Notificaciones: El usuario no concedió el permiso.");
+                    this.hideTyping();
+                    this.addBotMessage('<div class="bot-card" style="background-color: #ffffcc;"><p><strong>Permiso denegado.</strong> No podré enviarte notificaciones si no aceptas el permiso en la ventana de tu navegador.</p></div>');
+                    return;
+                }
+                console.log("Notificaciones: Permiso concedido. Obteniendo suscripción push...");
+                let pushSubscription = await swRegistration.pushManager.getSubscription();
+                if (pushSubscription === null) {
+                    console.log("Notificaciones: No se encontró suscripción, creando una nueva...");
+                    const vapidPublicKey = 'BJCOJ2WGEu7_29mhcE56t5zkmkmO2phKSVEELfWjTVe1RtmeZOZ5LWZfMyNWpWo7q7jNhBqezFf5MQFNq9NYSqA';
+                    pushSubscription = await swRegistration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
+                    });
+                    console.log("Notificaciones: Nueva suscripción creada.");
+                } else {
+                    console.log("Notificaciones: Se encontró una suscripción existente.");
+                }
+                await this.savePushSubscription(pushSubscription);
+            } catch (error) {
+                console.error("Notificaciones: Error catastrófico durante el registro.", error);
+                this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>¡Ups! Hubo un error.</strong> No se pudieron activar las notificaciones. <br><small>Detalle: ${error.message}</small></p></div>`);
+            } finally {
+                this.hideTyping();
+            }
         }
-
-        await this.savePushSubscription(pushSubscription);
-
-    } catch (error) {
-        console.error("Notificaciones: Error catastrófico durante el registro.", error);
-        this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>¡Ups! Hubo un error.</strong> No se pudieron activar las notificaciones. <br><small>Detalle: ${error.message}</small></p></div>`);
-    } finally {
-        this.hideTyping();
-    }
-}
-
-         
 
         urlBase64ToUint8Array(base64String) {
             const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -370,38 +347,31 @@ async registerServiceWorker() {
             return outputArray;
         }
 
-     
-// ⬇️ REEMPLAZA TAMBIÉN ESTA FUNCIÓN COMPLETA EN index.html ⬇️
-async savePushSubscription(subscription) {
-    console.log("BD: Intentando guardar la suscripción en Supabase..."); // Log para consola
-
-    if (!this.currentUser || !this.currentUser.id) {
-        console.error("BD Error: No se encontró un usuario logueado para guardar la suscripción."); // Log para consola
-        this.addBotMessage('<div class="bot-card" style="background-color: #ffdddd;"><p><strong>Error Crítico:</strong> No pude identificarte. Por favor, intenta recargar la página.</p></div>');
-        return;
-    }
-    
-    const userId = this.currentUser.id;
-    console.log(`BD: Actualizando perfil para user_id: ${userId}`); // Log para consola
-
-    const { data, error } = await supabase
-      .from('barbers')
-      .update({ push_subscription: subscription })
-      .eq('user_id', userId) 
-      .select();
-
-    if (error) {
-        console.error("BD Error: Fallo al guardar la suscripción.", error); // Log para consola
-        this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>Error en la base de datos:</strong> No se pudo guardar la configuración de notificaciones.<br><small>${error.message}</small></p></div>`);
-    } else if (data && data.length > 0) {
-        console.info("BD: ¡Suscripción guardada con éxito!"); // Log para consola
-        this.addBotMessage('<div class="bot-card" style="background-color: #ddffdd;"><p><strong>¡Listo! ✅</strong> Las notificaciones han sido activadas. A partir de ahora recibirás alertas de nuevas citas y mensajes.</p></div>');
-    } else {
-        console.warn("BD: La operación no falló, pero no se actualizó ninguna fila. Posible problema con RLS o ID de usuario."); // Log para consola
-        this.addBotMessage('<div class="bot-card" style="background-color: #ffffcc;"><p><strong>Atención:</strong> La configuración se completó, pero parece que no se guardó. Si no recibes notificaciones, contacta a soporte.</p></div>');
-    }
-}
-
+        async savePushSubscription(subscription) {
+            console.log("BD: Intentando guardar la suscripción en Supabase...");
+            if (!this.currentUser || !this.currentUser.id) {
+                console.error("BD Error: No se encontró un usuario logueado para guardar la suscripción.");
+                this.addBotMessage('<div class="bot-card" style="background-color: #ffdddd;"><p><strong>Error Crítico:</strong> No pude identificarte. Por favor, intenta recargar la página.</p></div>');
+                return;
+            }
+            const userId = this.currentUser.id;
+            console.log(`BD: Actualizando perfil para user_id: ${userId}`);
+            const { data, error } = await supabase
+              .from('barbers')
+              .update({ push_subscription: subscription })
+              .eq('user_id', userId) 
+              .select();
+            if (error) {
+                console.error("BD Error: Fallo al guardar la suscripción.", error);
+                this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>Error en la base de datos:</strong> No se pudo guardar la configuración de notificaciones.<br><small>${error.message}</small></p></div>`);
+            } else if (data && data.length > 0) {
+                console.info("BD: ¡Suscripción guardada con éxito!");
+                this.addBotMessage('<div class="bot-card" style="background-color: #ddffdd;"><p><strong>¡Listo! ✅</strong> Las notificaciones han sido activadas. A partir de ahora recibirás alertas de nuevas citas y mensajes.</p></div>');
+            } else {
+                console.warn("BD: La operación no falló, pero no se actualizó ninguna fila. Posible problema con RLS o ID de usuario.");
+                this.addBotMessage('<div class="bot-card" style="background-color: #ffffcc;"><p><strong>Atención:</strong> La configuración se completó, pero parece que no se guardó. Si no recibes notificaciones, contacta a soporte.</p></div>');
+            }
+        }
 
         updateBadges() {
             const totalUnread = Object.values(this.unreadCounts).reduce((sum, count) => sum + count, 0);
@@ -411,15 +381,12 @@ async savePushSubscription(subscription) {
             } else {
                 this.chatsBadge.classList.remove('visible');
             }
-
-            // --- BLOQUE MODIFICADO ---
             if (this.newBookingsData.length > 0) {
                 this.bookingsBadge.textContent = this.newBookingsData.length > 9 ? '9+' : this.newBookingsData.length;
                 this.bookingsBadge.classList.add('visible');
             } else {
                 this.bookingsBadge.classList.remove('visible');
             }
-
             if (this.newTransactionsCount > 0) {
                 this.financeBadge.textContent = this.newTransactionsCount > 9 ? '9+' : this.newTransactionsCount;
                 this.financeBadge.classList.add('visible');
@@ -432,7 +399,6 @@ async savePushSubscription(subscription) {
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
             document.getElementById(viewName).classList.add('active');
             this.activeView = viewName.replace('View', '');
-
             const headerTitleDiv = document.getElementById('header-title');
             if (this.activeView === 'bot' || this.activeView === 'clientChats') {
                 headerTitleDiv.style.display = 'block';
@@ -462,26 +428,21 @@ async savePushSubscription(subscription) {
             const serviceToEdit = button.dataset.serviceEdit;
             const dayToEdit = button.dataset.dayEdit;
             const dayToConfirm = button.dataset.dayConfirm;
-
             if (command) {
                 this.addUserMessage(button.textContent.trim());
                 if (command.startsWith('check_availability:')) {
                     const parts = command.split(':');
                     const dateString = parts[1];
                     const barberName = parts.length > 2 ? parts[2] : null; 
-                    
                     const dateParts = dateString.split('-');
                     const date = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
                     if (isNaN(date.getTime())) { this.addBotMessage(`<div class="bot-card"><p>❌ Error: La fecha recibida no es válida.</p></div>`); return; }
-                    
                     await this.showAvailabilityForDate(date, barberName);
-
                 } else if (command.startsWith('select_barber_for_flow:')) {
                     const [_, barberName, nextFlow] = command.split(':');
                     this.userData.selectedBarber = barberName;
                     this.currentFlow = 'authenticated';
                     await this.handleAuthenticatedCommand(`/${nextFlow}`);
-
                 } else {
                     await this.processUserInput(command.toLowerCase());
                 }
@@ -508,7 +469,10 @@ async savePushSubscription(subscription) {
             const text = this.messageInput.value.trim();
             if (!text || this.isTyping) return;
             this.messageInput.value = '';
-            if (this.activeView === 'bot') { this.addUserMessage(text); await this.processUserInput(text.toLowerCase(), text); } // Pasamos la versión minúscula (para comandos) y la original 
+            // --- MEJORA APLICADA AQUÍ ---
+            // Pasamos la versión minúscula para comandos (primer parámetro)
+            // y la versión original para guardar datos (segundo parámetro)
+            if (this.activeView === 'bot') { this.addUserMessage(text); await this.processUserInput(text.toLowerCase(), text); }
             else if (this.activeView === 'singleChat') { await this.sendClientMessage(text); }
         }
 
@@ -535,9 +499,7 @@ async savePushSubscription(subscription) {
         hideTyping() { this.isTyping = false; const indicator = document.getElementById('typing-indicator'); if (indicator) indicator.remove(); }
         
         async processUserInput(input, originalText = null) {
-            // 'input' será la versión en minúsculas (para comandos)
-            // 'originalText' será la versión original (para nombres, etc.)
-            if (originalText === null) originalText = input; // Fallback por si acaso
+            if (originalText === null) originalText = input;
             this.showTyping();
             await new Promise(resolve => setTimeout(resolve, 600));
             this.hideTyping();
@@ -546,25 +508,28 @@ async savePushSubscription(subscription) {
                 case 'welcome': case 'has_account': case 'register_name':
                 case 'register_last_name': case 'register_email': case 'register_password':
                 case 'login_email': case 'login_password':
-                    await this.handleAuthFlow(input);
+                    await this.handleAuthFlow(input, originalText);
                     break;
                 case 'servicio_add_name':
-                    this.userData.tempServiceName = input;
-                    this.addBotMessage(`<div class="bot-card"><p>¡Entendido! El servicio se llamará "<strong>${input}</strong>".</p><p>Ahora, por favor, dime el precio (solo el número).</p></div>`);
+                    this.userData.tempServiceName = originalText;
+                    this.addBotMessage(`<div class="bot-card"><p>¡Entendido! El servicio se llamará "<strong>${originalText}</strong>".</p><p>Ahora, por favor, dime el precio (solo el número).</p></div>`);
                     this.currentFlow = 'servicio_add_price';
                     break;
                 case 'servicio_add_price':
                     await this.addService(this.userData.tempServiceName, input);
                     break;
+                
+                // --- MEJORA APLICADA AQUÍ ---
+                // Se usa 'originalText' para preservar mayúsculas
                 case 'adding_barber_name':
-                    await this.addNewBarberToJSON(input.trim());
+                    await this.addNewBarberToJSON(originalText.trim());
                     break;
                 
-                // --- CÓDIGO AÑADIDO ---
+                // --- MEJORA APLICADA AQUÍ ---
+                // Se usa 'originalText' para preservar mayúsculas
                 case 'editing_shop_name':
-                    await this.updateShopName(input.trim());
+                    await this.updateShopName(originalText.trim());
                     break;
-                // --- FIN DEL CÓDIGO AÑADIDO ---
 
                 case 'authenticated':
                     await this.handleAuthenticatedCommand(input);
@@ -577,7 +542,6 @@ async savePushSubscription(subscription) {
         async handleAuthenticatedCommand(input) {
             const [command, ...args] = input.split(' ');
             const argString = args.join(' ');
-
             switch(command) {
                 case '/miperfil': await this.showBarberProfile(); break;
                 case '/citas': await this.showAllBookings(); break;
@@ -586,19 +550,12 @@ async savePushSubscription(subscription) {
                 case '/cerrar': await this.logout(); break;
                 case '/finanzas': await this.showFinanceMenu(); break;
                 case '/generar_qr': await this.promptForQRCodeGeneration(); break;
-                
-                // --- CÓDIGO AÑADIDO ---
                 case '/editar_shop_name':
                     this.addBotMessage('<div class="bot-card"><p>Introduce el nuevo nombre para tu barbería:</p></div>');
                     this.currentFlow = 'editing_shop_name';
                     break;
-                // --- FIN DEL CÓDIGO AÑADIDO ---
-
                 case 'menu': case 'menú': this.showMainMenu(); break;
-                
-                // --- NUEVO COMANDO AÑADIDO ---
                 case '/suscribirse_notificaciones': await this.registerServiceWorker(); break;
-                
                 case '/horario':
                     if (argString === 'ver') await this.promptBarberSelection('horario ver');
                     else if (argString === 'definir') await this.promptBarberSelection('horario definir');
@@ -610,7 +567,6 @@ async savePushSubscription(subscription) {
                     else if (argString === 'editar') await this.promptBarberSelection('servicios editar');
                     else await this.promptBarberSelection('servicios');
                     break;
-                
                 case '/equipo': this.showTeamManagementMenu(); break;
                 case '/activar_equipo': await this.activateTeamAccount(); break;
                 case '/ver_equipo': await this.showTeamMembers(); break;
@@ -618,7 +574,6 @@ async savePushSubscription(subscription) {
                     this.addBotMessage('<div class="bot-card"><p>¡Perfecto! Escribe el nombre del nuevo barbero.</p></div>');
                     this.currentFlow = 'adding_barber_name';
                     break;
-                
                 case '/horario-interno':
                     if (argString === 'ver') await this.showAvailability();
                     else if (argString === 'definir') await this.promptDaySelection();
@@ -641,7 +596,6 @@ async savePushSubscription(subscription) {
         }
         
         showMainMenu() {
-            // --- MENÚ PRINCIPAL MODIFICADO ---
             const menuHTML = `<div class="bot-card"><h3>Menú Principal</h3><p>Hola de nuevo, ¿en qué te puedo ayudar hoy?</p><div class="command-buttons-container">
             <button class="command-button" data-command="/miperfil">👤 Mi Perfil</button>
             <button class="command-button" data-command="/equipo">👥 Gestionar Equipo</button>
@@ -661,7 +615,6 @@ async savePushSubscription(subscription) {
             const title = this.barberProfile.is_team_account 
                 ? `para <strong>${this.userData.selectedBarber}</strong>` 
                 : '';
-
             const menuHTML = `<div class="bot-card"><h3>🛠️ Gestión de Servicios ${title}</h3><div class="command-buttons-container"><button class="command-button" data-command="/servicios-interno ver">Ver Lista</button><button class="command-button" data-command="/servicios-interno agregar">Agregar Nuevo</button><button class="command-button" data-command="/servicios-interno editar">Editar / Borrar</button><button class="command-button full-width return" data-command="menu">Volver al Menú</button></div></div>`;
             this.addBotMessage(menuHTML);
         }
@@ -670,7 +623,6 @@ async savePushSubscription(subscription) {
             const title = this.barberProfile.is_team_account 
                 ? `para <strong>${this.userData.selectedBarber}</strong>` 
                 : '';
-
             const menuHTML = `<div class="bot-card"><h3>⏰ Gestión de Horario ${title}</h3><div class="command-buttons-container"><button class="command-button" data-command="/horario-interno ver">Ver mi Horario</button><button class="command-button" data-command="/horario-interno definir">Definir/Editar</button><button class="command-button full-width return" data-command="menu">Volver al Menú</button></div></div>`;
             this.addBotMessage(menuHTML);
         }
@@ -681,11 +633,9 @@ async savePushSubscription(subscription) {
                 thu: 'Jueves', fri: 'Viernes', sat: 'Sábado', sun: 'Domingo' 
             };
             const barberName = this.userData.selectedBarber;
-
             const buttonsHTML = Object.keys(days).map(key => 
                 `<button class="command-button" data-day-edit="${key}">${days[key]}</button>`
             ).join('');
-
             const menuHTML = `<div class="bot-card">
                 <h3>Definir Horario para ${barberName}</h3>
                 <p>Por favor, selecciona el día que quieres configurar.</p>
@@ -729,9 +679,7 @@ async savePushSubscription(subscription) {
                 .eq('user_id', this.currentUser.id)
                 .select()
                 .single();
-
             this.hideTyping();
-
             if (error) {
                 console.error("Error activating team account:", error);
                 this.addBotMessage('<div class="bot-card"><p>❌ Hubo un error al activar la cuenta de equipo. Por favor, inténtalo de nuevo.</p></div>');
@@ -755,29 +703,28 @@ async savePushSubscription(subscription) {
         }
 
         async addNewBarberToJSON(barberName) {
-            if (!barberName) { this.addBotMessage('<div class="bot-card"><p>El nombre no puede estar vacío.</p></div>'); return; }
+            // --- MEJORA APLICADA AQUÍ ---
+            // Se formatea el nombre para asegurar mayúsculas correctas
+            const formattedName = this.capitalizeName(barberName);
+            if (!formattedName) { this.addBotMessage('<div class="bot-card"><p>El nombre no puede estar vacío.</p></div>'); return; }
             this.showTyping();
             const b = await this.getBarberProfile();
             let availability = b.availability || {};
             let services = b.services || {};
-
-            if (availability[barberName] || services[barberName]) {
+            if (availability[formattedName] || services[formattedName]) {
                 this.hideTyping();
-                this.addBotMessage(`<div class="bot-card"><p>⚠️ El barbero "<strong>${barberName}</strong>" ya existe.</p></div>`);
+                this.addBotMessage(`<div class="bot-card"><p>⚠️ El barbero "<strong>${formattedName}</strong>" ya existe.</p></div>`);
                 this.showTeamManagementMenu();
                 return;
             }
-
-            availability[barberName] = {};
-            services[barberName] = [];
-
+            availability[formattedName] = {};
+            services[formattedName] = [];
             const { error } = await supabase.from('barbers').update({ availability, services }).eq('user_id', this.currentUser.id);
             this.hideTyping();
-
             if (error) {
                 this.addBotMessage('<div class="bot-card"><p>❌ Hubo un error al guardar.</p></div>');
             } else {
-                this.addBotMessage(`<div class="bot-card"><p>✅ <strong>${barberName}</strong> ha sido añadido. Ahora puedes configurar su horario y servicios.</p></div>`);
+                this.addBotMessage(`<div class="bot-card"><p>✅ <strong>${formattedName}</strong> ha sido añadido. Ahora puedes configurar su horario y servicios.</p></div>`);
             }
             this.currentFlow = 'authenticated';
             this.showTeamManagementMenu();
@@ -792,17 +739,14 @@ async savePushSubscription(subscription) {
                 await this.handleAuthenticatedCommand(`/${nextFlow}-interno`);
                 return;
             }
-
             if (barbers.length === 0) {
                 this.addBotMessage('<div class="bot-card"><p>Primero debes añadir al menos un barbero a tu equipo. Usa el menú de "Gestionar Equipo".</p></div>');
                 this.showMainMenu();
                 return;
             }
-
             const buttonsHTML = barbers.map(name => 
                 `<button class="command-button" data-command="select_barber_for_flow:${name}:${nextFlow}-interno">${name}</button>`
             ).join('');
-
             this.addBotMessage(`<div class="bot-card">
                 <h3>¿Para qué barbero deseas realizar esta acción?</h3>
                 <div class="command-buttons-container">${buttonsHTML}</div>
@@ -817,7 +761,6 @@ async savePushSubscription(subscription) {
                 .select('*')
                 .eq('user_id', this.currentUser.id)
                 .single();
-
             if (data && !error) {
                 this.barberProfile = data;
                 console.log("Perfil local refrescado con éxito desde la BD.");
@@ -826,97 +769,76 @@ async savePushSubscription(subscription) {
             }
         }
         
-async showBarberProfile() {
-    this.showTyping();
-    const profile = this.getBarberProfile();
-    await new Promise(resolve => setTimeout(resolve, 500)); 
-    this.hideTyping();
-
-    if (!profile) {
-        this.addBotMessage('<div class="bot-card"><p>❌ No pude cargar tu perfil. Intenta recargar la página.</p></div>');
-        return;
-    }
-
-    const accountType = profile.is_team_account ? 'Equipo (Múltiples Barberos)' : 'Individual';
-    const sanitizedShopName = profile.barber_shop_name.replace(/'/g, "\\'");
-
-    // --- LÓGICA PARA EL AVATAR Y BOTONES ---
-    let avatarHTML = '';
-    if (profile.avatar_url) {
-        // Si hay foto, la mostramos
-        avatarHTML = `<div class="profile-avatar"><img src="${profile.avatar_url}" alt="Foto de Perfil"></div>`;
-    } else {
-        // Si no, mostramos la inicial del nombre
-        const initial = profile.first_name ? profile.first_name.charAt(0).toUpperCase() : '?';
-        avatarHTML = `<div class="profile-avatar"><span>${initial}</span></div>`;
-    }
-
-    let photoButtonsHTML = '';
-    if (profile.avatar_url) {
-        // Si hay foto, mostramos botones de editar y eliminar
-        photoButtonsHTML = `
-            <button class="command-button" onclick="app.triggerFileUpload()">✏️ Editar Foto</button>
-            <button class="command-button cancel" onclick="app.deleteProfilePicture()">🗑️ Eliminar Foto</button>
-        `;
-    } else {
-        // Si no hay foto, mostramos solo el de subir
-        photoButtonsHTML = `
-            <button class="command-button full-width confirm" onclick="app.triggerFileUpload()">📸 Subir Foto de Perfil</button>
-        `;
-    }
-
-    const profileHTML = `
-    <div class="bot-card">
-        <h3>👤 Mi Perfil</h3>
-        <div class="profile-avatar-wrapper">${avatarHTML}</div>
-
-        <div class="command-buttons-container" style="margin-bottom: 15px; grid-template-columns: 1fr 1fr;">
-            ${photoButtonsHTML}
-        </div>
-
-        <ul>
-            <li><span class="item-name">Nombre:</span><span class="item-detail">${profile.first_name} ${profile.last_name}</span></li>
-            
-            <li>
-                <span class="item-name">Barbería:</span>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                     <span class="item-detail">${profile.barber_shop_name}</span>
-                     <button class="command-button" data-command="/editar_shop_name" style="padding: 4px 10px; font-size: 0.85em; flex-shrink: 0;">Editar</button>
+        async showBarberProfile() {
+            this.showTyping();
+            const profile = this.getBarberProfile();
+            await new Promise(resolve => setTimeout(resolve, 500)); 
+            this.hideTyping();
+            if (!profile) {
+                this.addBotMessage('<div class="bot-card"><p>❌ No pude cargar tu perfil. Intenta recargar la página.</p></div>');
+                return;
+            }
+            const accountType = profile.is_team_account ? 'Equipo (Múltiples Barberos)' : 'Individual';
+            const sanitizedShopName = profile.barber_shop_name.replace(/'/g, "\\'");
+            let avatarHTML = '';
+            if (profile.avatar_url) {
+                avatarHTML = `<div class="profile-avatar"><img src="${profile.avatar_url}" alt="Foto de Perfil"></div>`;
+            } else {
+                const initial = profile.first_name ? profile.first_name.charAt(0).toUpperCase() : '?';
+                avatarHTML = `<div class="profile-avatar"><span>${initial}</span></div>`;
+            }
+            let photoButtonsHTML = '';
+            if (profile.avatar_url) {
+                photoButtonsHTML = `
+                    <button class="command-button" onclick="app.triggerFileUpload()">✏️ Editar Foto</button>
+                    <button class="command-button cancel" onclick="app.deleteProfilePicture()">🗑️ Eliminar Foto</button>
+                `;
+            } else {
+                photoButtonsHTML = `
+                    <button class="command-button full-width confirm" onclick="app.triggerFileUpload()">📸 Subir Foto de Perfil</button>
+                `;
+            }
+            const profileHTML = `
+            <div class="bot-card">
+                <h3>👤 Mi Perfil</h3>
+                <div class="profile-avatar-wrapper">${avatarHTML}</div>
+                <div class="command-buttons-container" style="margin-bottom: 15px; grid-template-columns: 1fr 1fr;">
+                    ${photoButtonsHTML}
                 </div>
-            </li>
-            <li><span class="item-name">Tipo de Cuenta:</span><span class="item-detail">${accountType}</span></li>
-            <li><span class="item-name">Código Clientes:</span><span class="item-detail" style="font-weight: bold; color: #764ba2;">${profile.public_code}</span></li>
-        </ul>
-        <p class="helper-text">Tus clientes usan este código para conectar contigo.</p>
-
-        <div class="command-buttons-container" style="margin-top: 15px; grid-template-columns: 1fr 1fr;">
-            <button class="command-button" onclick="app.copyCodeToClipboard('${profile.public_code}', this)">📋 Copiar Código</button>
-            <button class="command-button confirm" onclick="app.shareProfileCode('${profile.public_code}', '${sanitizedShopName}')">📲 Compartir</button>
-        </div>
-        <div class="command-buttons-container" style="margin-top: 10px;">
-            <button class="command-button full-width return" data-command="menu">↩️ Volver al Menú</button>
-        </div>
-    </div>`;
-
-    this.addBotMessage(profileHTML);
-}
+                <ul>
+                    <li><span class="item-name">Nombre:</span><span class="item-detail">${profile.first_name} ${profile.last_name}</span></li>
+                    <li>
+                        <span class="item-name">Barbería:</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                             <span class="item-detail">${profile.barber_shop_name}</span>
+                             <button class="command-button" data-command="/editar_shop_name" style="padding: 4px 10px; font-size: 0.85em; flex-shrink: 0;">Editar</button>
+                        </div>
+                    </li>
+                    <li><span class="item-name">Tipo de Cuenta:</span><span class="item-detail">${accountType}</span></li>
+                    <li><span class="item-name">Código Clientes:</span><span class="item-detail" style="font-weight: bold; color: #764ba2;">${profile.public_code}</span></li>
+                </ul>
+                <p class="helper-text">Tus clientes usan este código para conectar contigo.</p>
+                <div class="command-buttons-container" style="margin-top: 15px; grid-template-columns: 1fr 1fr;">
+                    <button class="command-button" onclick="app.copyCodeToClipboard('${profile.public_code}', this)">📋 Copiar Código</button>
+                    <button class="command-button confirm" onclick="app.shareProfileCode('${profile.public_code}', '${sanitizedShopName}')">📲 Compartir</button>
+                </div>
+                <div class="command-buttons-container" style="margin-top: 10px;">
+                    <button class="command-button full-width return" data-command="menu">↩️ Volver al Menú</button>
+                </div>
+            </div>`;
+            this.addBotMessage(profileHTML);
+        }
         
-        // Pega estas dos nuevas funciones en tu archivo index.html, dentro de la clase ChatApp
-
         async copyCodeToClipboard(code, buttonElement) {
             try {
                 await navigator.clipboard.writeText(code);
-                // Feedback visual para el usuario
                 const originalText = buttonElement.innerHTML;
                 buttonElement.innerHTML = '✅ ¡Copiado!';
-                buttonElement.style.backgroundColor = '#28a745'; // Verde de éxito
-                
-                // Vuelve al estado original después de 2 segundos
+                buttonElement.style.backgroundColor = '#28a745';
                 setTimeout(() => {
                     buttonElement.innerHTML = originalText;
-                    buttonElement.style.backgroundColor = ''; // Restaura el color original
+                    buttonElement.style.backgroundColor = '';
                 }, 2000);
-
             } catch (err) {
                 console.error('Error al copiar el código: ', err);
                 this.addBotMessage('<div class="bot-card"><p>❌ Hubo un error al intentar copiar el código.</p></div>');
@@ -927,11 +849,8 @@ async showBarberProfile() {
             const shareData = {
                 title: `Código para ${shopName}`,
                 text: `¡Hola! Usa este código para conectar con nuestra barbería "${shopName}" en BarberConnect: ${code}`,
-                url: window.location.origin + '/Cliente.html' // <-- ¡Esta es la corrección!
+                url: window.location.origin + '/Cliente.html'
             };
-
-
-            // Comprueba si el navegador soporta la API de compartir
             if (navigator.share && navigator.canShare(shareData)) {
                 try {
                     await navigator.share(shareData);
@@ -940,161 +859,120 @@ async showBarberProfile() {
                     console.error('Error al compartir: ', err);
                 }
             } else {
-                // Mensaje por si el navegador no es compatible (ej. un PC de escritorio)
                 this.addBotMessage('<div class="bot-card"><p>La función de compartir no está disponible en este navegador. Puedes copiar el código manualmente.</p></div>');
             }
         }
         
-        
-// ... después de la función shareProfileCode ...
+        triggerFileUpload() {
+            this.profilePicInput.click();
+        }
 
-triggerFileUpload() {
-    // Esta función simple activa el click en el input de archivo oculto
-    this.profilePicInput.click();
-}
-
-// REEMPLAZA ESTA FUNCIÓN COMPLETA EN TU CÓDIGO (index.html)
-async uploadProfilePicture(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    // Validaciones (estas ya las tienes y están bien)
-    const fileTypes = ['image/png', 'image/jpeg'];
-    if (!fileTypes.includes(file.type)) {
-        this.addBotMessage('<div class="bot-card"><p>❌ Formato no válido. Sube una imagen PNG o JPG.</p></div>');
-        return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-        this.addBotMessage('<div class="bot-card"><p>❌ La imagen es muy grande. El límite es de 5 MB.</p></div>');
-        return;
-    }
-
-    this.addBotMessage('<div class="bot-card"><p>Subiendo foto, por favor espera... ⏳</p></div>');
-    this.showTyping();
-
-    const bucketName = 'profile_pictures';
-    const filePath = `${this.currentUser.id}/profile.png`;
-
-    try {
-        // 1. Subir el archivo (esto no cambia)
-        const { error: uploadError } = await supabase.storage
-            .from(bucketName)
-            .upload(filePath, file, {
-                cacheControl: '3600',
-                upsert: true,
-            });
-
-        if (uploadError) throw uploadError;
-
-        // 2. Obtener la URL pública con el truco anti-caché (esto no cambia)
-        const { data: urlData } = supabase.storage
-            .from(bucketName)
-            .getPublicUrl(filePath);
-        const publicURLWithCacheBuster = `${urlData.publicUrl}?t=${new Date().getTime()}`;
-
-        // --- CAMBIO CLAVE: ACTUALIZAR Y OBTENER EN UN SOLO PASO ---
-        // Usamos .select().single() para que la operación nos devuelva el perfil actualizado.
-        const { data: updatedProfile, error: dbError } = await supabase
-            .from('barbers')
-            .update({ avatar_url: publicURLWithCacheBuster })
-            .eq('user_id', this.currentUser.id)
-            .select() // <-- Le decimos que nos devuelva la fila
-            .single(); // <-- Y que sea solo una
-
-        if (dbError) throw dbError;
-
-        // --- SEGUNDO CAMBIO CLAVE: ACTUALIZAR EL ESTADO LOCAL DIRECTAMENTE ---
-        // Ya no necesitamos llamar a refreshProfileFromDB(), porque ya tenemos los datos frescos.
-        this.barberProfile = updatedProfile;
-
-        this.addBotMessage('<div class="bot-card"><p>✅ ¡Foto de perfil actualizada con éxito!</p></div>');
-        await this.showBarberProfile(); // Ahora esta función usará el perfil garantizado 100% actualizado.
-
-    } catch (error) {
-        console.error("Error subiendo la foto:", error);
-        this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>❌ Hubo un error al subir tu foto:</strong><br><small>${error.message}</small></p></div>`);
-    } finally {
-        this.hideTyping();
-        this.profilePicInput.value = '';
-    }
-}
-
-async deleteProfilePicture() {
-    if (!confirm("¿Estás seguro de que quieres eliminar tu foto de perfil?")) return;
-
-    this.addBotMessage('<div class="bot-card"><p>Eliminando foto...</p></div>');
-    this.showTyping();
-
-    const filePath = `${this.currentUser.id}/profile.png`;
-
-    try {
-        // Eliminar de Supabase Storage
-        const { error: removeError } = await supabase.storage
-            .from('profile_pictures')
-            .remove([filePath]);
-
-        if (removeError) throw removeError;
-
-        // Eliminar la URL de la base de datos
-        const { error: dbError } = await supabase
-            .from('barbers')
-            .update({ avatar_url: null })
-            .eq('user_id', this.currentUser.id);
-
-        if (dbError) throw dbError;
-
-        await this.refreshProfileFromDB();
-        this.addBotMessage('<div class="bot-card"><p>✅ Foto eliminada correctamente.</p></div>');
-        await this.showBarberProfile();
-
-    } catch (error) {
-        console.error("Error eliminando la foto:", error);
-        this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error al eliminar tu foto: ${error.message}</p></div>`);
-    } finally {
-        this.hideTyping();
-    }
-}
-
-        // --- FUNCIÓN AÑADIDA PARA LA MEJORA ---
-        async updateShopName(newName) {
-            if (!newName || newName.length < 3) {
-                this.addBotMessage('<div class="bot-card"><p>❌ El nombre es muy corto. Por favor, introduce un nombre válido.</p></div>');
-                this.currentFlow = 'authenticated';
-                await this.showBarberProfile(); // Vuelve a mostrar el perfil
+        async uploadProfilePicture(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const fileTypes = ['image/png', 'image/jpeg'];
+            if (!fileTypes.includes(file.type)) {
+                this.addBotMessage('<div class="bot-card"><p>❌ Formato no válido. Sube una imagen PNG o JPG.</p></div>');
                 return;
             }
-
+            if (file.size > 5 * 1024 * 1024) {
+                this.addBotMessage('<div class="bot-card"><p>❌ La imagen es muy grande. El límite es de 5 MB.</p></div>');
+                return;
+            }
+            this.addBotMessage('<div class="bot-card"><p>Subiendo foto, por favor espera... ⏳</p></div>');
             this.showTyping();
-            
+            const bucketName = 'profile_pictures';
+            const filePath = `${this.currentUser.id}/profile.png`;
+            try {
+                const { error: uploadError } = await supabase.storage
+                    .from(bucketName)
+                    .upload(filePath, file, {
+                        cacheControl: '3600',
+                        upsert: true,
+                    });
+                if (uploadError) throw uploadError;
+                const { data: urlData } = supabase.storage
+                    .from(bucketName)
+                    .getPublicUrl(filePath);
+                const publicURLWithCacheBuster = `${urlData.publicUrl}?t=${new Date().getTime()}`;
+                const { data: updatedProfile, error: dbError } = await supabase
+                    .from('barbers')
+                    .update({ avatar_url: publicURLWithCacheBuster })
+                    .eq('user_id', this.currentUser.id)
+                    .select()
+                    .single();
+                if (dbError) throw dbError;
+                this.barberProfile = updatedProfile;
+                this.addBotMessage('<div class="bot-card"><p>✅ ¡Foto de perfil actualizada con éxito!</p></div>');
+                await this.showBarberProfile();
+            } catch (error) {
+                console.error("Error subiendo la foto:", error);
+                this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd;"><p><strong>❌ Hubo un error al subir tu foto:</strong><br><small>${error.message}</small></p></div>`);
+            } finally {
+                this.hideTyping();
+                this.profilePicInput.value = '';
+            }
+        }
+
+        async deleteProfilePicture() {
+            if (!confirm("¿Estás seguro de que quieres eliminar tu foto de perfil?")) return;
+            this.addBotMessage('<div class="bot-card"><p>Eliminando foto...</p></div>');
+            this.showTyping();
+            const filePath = `${this.currentUser.id}/profile.png`;
+            try {
+                const { error: removeError } = await supabase.storage
+                    .from('profile_pictures')
+                    .remove([filePath]);
+                if (removeError) throw removeError;
+                const { error: dbError } = await supabase
+                    .from('barbers')
+                    .update({ avatar_url: null })
+                    .eq('user_id', this.currentUser.id);
+                if (dbError) throw dbError;
+                await this.refreshProfileFromDB();
+                this.addBotMessage('<div class="bot-card"><p>✅ Foto eliminada correctamente.</p></div>');
+                await this.showBarberProfile();
+            } catch (error) {
+                console.error("Error eliminando la foto:", error);
+                this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error al eliminar tu foto: ${error.message}</p></div>`);
+            } finally {
+                this.hideTyping();
+            }
+        }
+        
+        async updateShopName(newName) {
+            // --- MEJORA APLICADA AQUÍ ---
+            // Se formatea el nombre para asegurar mayúsculas correctas
+            const formattedName = this.capitalizeName(newName);
+            if (!formattedName || formattedName.length < 3) {
+                this.addBotMessage('<div class="bot-card"><p>❌ El nombre es muy corto. Por favor, introduce un nombre válido.</p></div>');
+                this.currentFlow = 'authenticated';
+                await this.showBarberProfile();
+                return;
+            }
+            this.showTyping();
             const { data, error } = await supabase
                 .from('barbers')
-                .update({ barber_shop_name: newName })
+                .update({ barber_shop_name: formattedName })
                 .eq('user_id', this.currentUser.id)
                 .select()
                 .single();
-
             this.hideTyping();
             this.currentFlow = 'authenticated';
-
             if (error) {
                 console.error("Error updating shop name:", error);
                 this.addBotMessage('<div class="bot-card"><p>❌ Hubo un error al actualizar el nombre de la barbería.</p></div>');
             } else {
-                this.barberProfile = data; // Actualiza el perfil local con la data que retorna
+                this.barberProfile = data;
                 this.addBotMessage('<div class="bot-card"><p>✅ ¡Nombre de la barbería actualizado con éxito!</p></div>');
             }
-            
-            // Mostramos el perfil actualizado
             await this.showBarberProfile();
         }
         
-        
-
         async showServices() {
             const barberName = this.userData.selectedBarber;
             const b = await this.getBarberProfile();
             let servicesOfBarber = (b.services || {})[barberName] || [];
-
             let s = '';
             if (servicesOfBarber.length > 0) {
                 s = servicesOfBarber.map(svc => `<li><span class="item-name">${svc.name}</span><span class="item-detail">$${svc.price}</span></li>`).join('');
@@ -1127,22 +1005,17 @@ async deleteProfilePicture() {
                 .select('*, clients(first_name, last_name)')
                 .eq('barber_id', this.barberProfile.id)
                 .order('booking_date', { ascending: true });
-            
             this.hideTyping();
-
             const backButtonHTML = `<div class="command-buttons-container" style="margin-top: 15px;"><button class="command-button full-width return" data-command="menu">↩️ Volver al Menú</button></div>`;
-
             if (error) {
                 this.addBotMessage(`<div class="bot-card"><p>❌ Error al consultar tus citas.</p>${backButtonHTML}</div>`);
                 console.error("Error fetching bookings:", error);
                 return;
             }
-
             if (!bookings || bookings.length === 0) {
                 this.addBotMessage(`<div class="bot-card"><h3>📅 Mis Citas</h3><p>No tienes ninguna cita programada por el momento.</p>${backButtonHTML}</div>`);
                 return;
             }
-
             const bookingsList = bookings.map(b => {
                 const date = new Date(b.booking_date);
                 const clientName = b.clients ? `${b.clients.first_name} ${b.clients.last_name}` : 'Cliente';
@@ -1153,63 +1026,42 @@ async deleteProfilePicture() {
                     <span class="item-detail">${formattedDate} - ${formattedTime}</span>
                 </li>`;
             }).join('');
-
             this.addBotMessage(`<div class="bot-card"><h3>📅 Mis Citas Programadas</h3><ul>${bookingsList}</ul>${backButtonHTML}</div>`);
         }
 
-        // --- FUNCIÓN NUEVA AÑADIDA ---
         async showNewBookings() {
-            this.switchView('botView'); // Asegurarnos de estar en la vista del bot
-            
-            // Copiamos las reservas nuevas y limpiamos el contador INMEDIATAMENTE
+            this.switchView('botView');
             const bookingsToProcess = [...this.newBookingsData];
             this.newBookingsData = [];
             this.updateBadges();
-
             const backButtonHTML = `<div class="command-buttons-container" style="margin-top: 15px;"><button class="command-button full-width return" data-command="menu">↩️ Volver al Menú</button></div>`;
-
-            // Si no había reservas nuevas
             if (bookingsToProcess.length === 0) {
                 this.addBotMessage(`<div class="bot-card"><h3>🔔 Notificaciones de Citas</h3><p>No tienes ninguna cita nueva en este momento.</p><hr style="border: 0; border-top: 1px solid #f1f3f5; margin: 10px 0;"><p style="font-size: 0.9em; color: #666;">Para ver todas tus citas (nuevas y antiguas), usa el comando <strong>/citas</strong>.</p>${backButtonHTML}</div>`);
                 return;
             }
-
             this.showTyping();
-
-            // El 'payload' de la subscripción no trae el nombre del cliente, solo el ID.
-            // Necesitamos consultar los nombres de los clientes.
             const clientIds = [...new Set(bookingsToProcess.map(b => b.client_id))];
-            
             const { data: clients, error } = await supabase
                 .from('clients')
                 .select('id, first_name, last_name')
                 .in('id', clientIds);
-
             this.hideTyping();
-
             if (error) {
                  this.addBotMessage(`<div class"bot-card"><p>❌ Error al cargar los nombres de los clientes para las notificaciones.</p>${backButtonHTML}</div>`);
                  return;
             }
-
-            // Creamos un "mapa" para buscar nombres por ID fácilmente
             const clientMap = new Map(clients.map(c => [c.id, `${c.first_name} ${c.last_name}`]));
-
-            // Creamos el HTML para cada notificación de reserva
             const bookingsListHTML = bookingsToProcess.map(b => {
                 const date = new Date(b.booking_date);
                 const clientName = clientMap.get(b.client_id) || 'Cliente Desconocido';
                 const formattedDate = date.toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: 'short' });
                 const formattedTime = date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-                const barberPerformer = b.barber_name || 'Staff'; // Usamos el barbero asignado
-
+                const barberPerformer = b.barber_name || 'Staff';
                 return `<li>
                     <span class="item-name">${b.service_name} con <strong>${clientName}</strong> (Atiende: ${barberPerformer})</span>
                     <span class="item-detail">${formattedDate} - ${formattedTime}</span>
                 </li>`;
             }).join('');
-
-            // Construimos la tarjeta "modal" final
             const finalCard = `
             <div class="bot-card">
                 <h3>🔔 ¡${bookingsToProcess.length} Cita(s) Nueva(s)!</h3>
@@ -1220,7 +1072,6 @@ async deleteProfilePicture() {
                     <button class="command-button return" data-command="menu">Volver al Menú</button>
                 </div>
             </div>`;
-
             this.addBotMessage(finalCard);
         }
 
@@ -1228,9 +1079,7 @@ async deleteProfilePicture() {
             const today = new Date();
             const tomorrow = new Date();
             tomorrow.setDate(today.getDate() + 1);
-
             const formatDateForCommand = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
             const promptHTML = `<div class="bot-card">
                 <h3>🔍 Ver Disponibilidad</h3>
                 <p>Por favor, selecciona una fecha para revisar los horarios disponibles y ocupados.</p>
@@ -1245,10 +1094,8 @@ async deleteProfilePicture() {
 
         async showAvailabilityForDate(date, barberName = null) {
             this.showTyping();
-            
             const profile = await this.getBarberProfile();
             const allBarbers = Object.keys(profile.availability || {});
-            
             if (profile.is_team_account && !barberName) {
                 const buttonsHTML = allBarbers.map(name => 
                     `<button class="command-button" data-command="check_availability:${date.toISOString().split('T')[0]}:${name}">${name}</button>`
@@ -1261,36 +1108,26 @@ async deleteProfilePicture() {
                 </div>`);
                 return;
             }
-            
             if (!barberName) barberName = allBarbers[0];
-
             const backButtonHTML = `<div class="command-buttons-container" style="margin-top: 15px;"><button class="command-button full-width return" data-command="menu">↩️ Volver al Menú</button></div>`;
-
             const dayMapping = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
             const dayKey = dayMapping[date.getDay()];
             const barberSchedule = (profile.availability[barberName] || {})[dayKey] || [];
-
             if (barberSchedule.length === 0) {
                 this.hideTyping();
                 this.addBotMessage(`<div class="bot-card"><p><strong>${barberName}</strong> no trabaja el ${date.toLocaleDateString()}.</p>${backButtonHTML}</div>`);
                 return;
             }
-
             const startOfDay = new Date(date); startOfDay.setHours(0, 0, 0, 0);
             const endOfDay = new Date(date); endOfDay.setHours(23, 59, 59, 999);
-
             const { data: bookings, error } = await supabase.from('bookings').select('booking_date').eq('barber_name', barberName).in('status', ['pending', 'confirmed']).gte('booking_date', startOfDay.toISOString()).lte('booking_date', endOfDay.toISOString());
-
             const bookedHours = bookings.map(b => new Date(b.booking_date).getHours());
-            
             const slotsHTML = barberSchedule.map(hour => {
                 const isBooked = bookedHours.includes(hour);
                 return `<div class="time-slot ${isBooked ? 'booked' : 'available'}">${hour}:00</div>`;
             }).join('');
-            
             const availableCount = barberSchedule.length - bookedHours.length;
             this.hideTyping();
-
             const availabilityCard = `<div class="bot-card">
                 <h3>Disponibilidad para ${barberName}</h3>
                 <p><strong>Fecha:</strong> ${date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
@@ -1302,7 +1139,6 @@ async deleteProfilePicture() {
                 </div>
                 ${backButtonHTML} 
             </div>`;
-
             this.addBotMessage(availabilityCard);
         }
 
@@ -1313,7 +1149,6 @@ async deleteProfilePicture() {
             for (let i = 7; i <= 22; i++) {
                 optionsHTML += `<option value="${i}">${i}:00</option>`;
             }
-
             const scheduleHTML = `<div class="bot-card">
                 <h3>Configurar Horario para ${dayName}</h3>
                 <p>Selecciona las horas de inicio y fin de la jornada. Las horas intermedias se añadirán automáticamente.</p>
@@ -1333,7 +1168,6 @@ async deleteProfilePicture() {
                 </div>
                  <button class="command-button full-width return" style="margin-top: 10px;" data-command="/horario-interno definir">↩️ Volver a los días</button>
             </div>`;
-
             this.addBotMessage(scheduleHTML);
             document.getElementById(`start-hour-${dayKey}`).value = '9';
             document.getElementById(`end-hour-${dayKey}`).value = '18';
@@ -1342,16 +1176,13 @@ async deleteProfilePicture() {
         async showFinanceMenu() {
             this.showTyping();
             await this.refreshProfileFromDB(); 
-
             const { data: transactions, error } = await supabase
                 .from('transactions')
                 .select('*')
                 .eq('barber_id', this.barberProfile.id)
                 .order('created_at', { ascending: false })
                 .limit(5);
-
             this.hideTyping();
-            
             let transactionsHTML = '<li><p>Aún no tienes transacciones.</p></li>';
             if (transactions && transactions.length > 0) {
                 transactionsHTML = transactions.map(t => {
@@ -1359,7 +1190,6 @@ async deleteProfilePicture() {
                     return `<li><span class="item-name">${t.description || 'Venta'} (${t.barber_name_performer})</span> <span class="item-detail" style="color: #28a745;">+${t.amount} Bs.</span></li>`;
                 }).join('');
             }
-
             const financeCard = `
             <div class="bot-card">
                 <h3>💰 Finanzas</h3>
@@ -1380,7 +1210,6 @@ async deleteProfilePicture() {
         async promptForQRCodeGeneration() {
             const profile = await this.getBarberProfile();
             let barberSelectorHTML = '';
-
             if (profile.is_team_account) {
                 const barbers = Object.keys(profile.availability || {});
                 const options = barbers.map(b => `<option value="${b}">${b}</option>`).join('');
@@ -1390,7 +1219,6 @@ async deleteProfilePicture() {
                     <select id="qr-barber">${options}</select>
                 </div>`;
             }
-
             const formHTML = `
             <div class="bot-card">
                 <h3>Generar Cobro QR</h3>
@@ -1418,23 +1246,19 @@ async deleteProfilePicture() {
             const description = document.getElementById('qr-desc').value;
             const barberSelect = document.getElementById('qr-barber');
             const performer = barberSelect ? barberSelect.value : this.barberProfile.first_name;
-
             if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
                 alert("Por favor, introduce un monto válido.");
                 return;
             }
-
             const paymentData = {
                 barber_id: this.barberProfile.id,
                 amount: parseFloat(amount).toFixed(2),
                 description: description || 'Servicio de Barbería',
                 performer: performer
             };
-
             const qr = qrcode(0, 'M');
             qr.addData(JSON.stringify(paymentData));
             qr.make();
-
             const qrCodeHTML = `
             <div class="bot-card">
                 <h3>Muestra este QR al cliente</h3>
@@ -1445,7 +1269,6 @@ async deleteProfilePicture() {
                     <button class="command-button return full-width" data-command="/finanzas">↩️ Volver a Finanzas</button>
                 </div>
             </div>`;
-
             this.addUserMessage(`Generar QR por ${paymentData.amount} Bs.`);
             this.addBotMessage(qrCodeHTML);
         }
@@ -1458,23 +1281,18 @@ async deleteProfilePicture() {
                 this.showServicesMenu();
                 return;
             }
-
             this.showTyping();
-            
             const b = await this.getBarberProfile();
             const services = JSON.parse(JSON.stringify(b.services || {}));
             if (!services[barberName]) {
                 services[barberName] = [];
             }
             services[barberName].push({ name: name, price: p });
-
             const { error } = await supabase
                 .from('barbers')
                 .update({ services: services })
                 .eq('user_id', this.currentUser.id);
-
             this.hideTyping();
-
             if (error) {
                 console.error("Error al guardar el servicio:", error);
                 this.addBotMessage('<div class="bot-card"><p>❌ Hubo un error al guardar el servicio.</p></div>');
@@ -1482,7 +1300,6 @@ async deleteProfilePicture() {
                 this.addBotMessage(`<div class="bot-card"><p>¡Genial! ✨ He añadido "<strong>${name}</strong>" a los servicios de <strong>${barberName}</strong>.</p></div>`);
                 await this.refreshProfileFromDB();
             }
-
             this.currentFlow = 'authenticated';
             await this.showServices();
         }
@@ -1494,7 +1311,6 @@ async deleteProfilePicture() {
             const b = await this.getBarberProfile();
             let avail = b.availability || {};
             if (!avail[barberName]) avail[barberName] = {};
-
             avail[barberName][dayKey] = Array.isArray(hours) ? hours.sort((a,b) => a-b) : [];
             
             const { error } = await supabase.from('barbers').update({ availability: avail }).eq('user_id', this.currentUser.id);
@@ -1515,7 +1331,6 @@ async deleteProfilePicture() {
                 this.currentUser = session.user; 
                 const { data, error } = await supabase.from('barbers').select('*').eq('user_id', this.currentUser.id).single();
                 if(data) this.barberProfile = data;
-
                 const name = this.barberProfile.first_name || this.currentUser.email; 
                 this.addBotMessage(`<div class="bot-card"><p>¡Qué bueno verte de nuevo, <strong>${name}</strong>! 👋</p><p>Estoy listo para ayudarte a organizar tu día.</p></div>`); 
                 this.showMainMenu(); 
@@ -1529,20 +1344,104 @@ async deleteProfilePicture() {
         }
 
         startWelcomeFlow() { this.addBotMessage(`<div class="bot-card"><h3>¡Bienvenido a BarberConnect! 💈</h3><p>Soy tu asistente virtual, y estoy aquí para ayudarte a gestionar tu barbería de forma sencilla.</p><p>Para empezar, ¿eres un <strong>barbero</strong>?</p></div>`); this.currentFlow = 'welcome'; }
-        async handleAuthFlow(input) { switch(this.currentFlow) { case 'welcome': if (input === 'barbero') { this.addBotMessage(`<div class="bot-card"><p>¡Excelente! ¿Ya tienes una cuenta con nosotros?</p><p>Por favor, responde <strong>sí</strong> o <strong>no</strong>.</p></div>`); this.currentFlow = 'has_account'; } else { this.addBotMessage(`<div class="bot-card"><p>Entendido. Esta interfaz está diseñada especialmente para barberos. ¡Esperamos verte pronto!</p></div>`) } break; case 'has_account': if (input.startsWith('s')) { this.addBotMessage('<div class="bot-card"><p>¡Perfecto! Por favor, ingresa tu correo electrónico para iniciar sesión.</p></div>'); this.currentFlow = 'login_email'; } else { this.addBotMessage('<div class="bot-card"><p>¡Genial, vamos a crear tu cuenta! Primero, ¿cuál es tu nombre?</p></div>'); this.currentFlow = 'register_name'; } break; case 'register_name': this.userData.firstName = input; this.addBotMessage(`<div class="bot-card"><p>¡Un placer, ${input}! Ahora, ¿cuál es tu apellido?</p></div>`); this.currentFlow = 'register_last_name'; break; case 'register_last_name': this.userData.lastName = input; this.addBotMessage('<div class="bot-card"><p>Muy bien. Ahora necesito tu correo electrónico. Lo usaremos para iniciar sesión.</p></div>'); this.currentFlow = 'register_email'; break; case 'register_email': this.userData.email = input; this.addBotMessage('<div class="bot-card"><p>Para terminar, crea una contraseña segura (debe tener al menos 6 caracteres).</p></div>'); this.currentFlow = 'register_password'; break; case 'register_password': if (input.length < 6) { this.addBotMessage('<div class="bot-card"><p>La contraseña es muy corta. Por seguridad, necesita al menos 6 caracteres. ¡Intenta con otra!</p></div>'); return; } this.userData.password = input; await this.registerUser(); break; case 'login_email': this.userData.email = input; this.addBotMessage('<div class="bot-card"><p>Gracias. Ahora, ingresa tu contraseña.</p></div>'); this.currentFlow = 'login_password'; break; case 'login_password': await this.loginUser(input); break; } }
-        async registerUser() { const { data, error } = await supabase.auth.signUp({ email: this.userData.email, password: this.userData.password, options: { data: { first_name: this.userData.firstName, last_name: this.userData.lastName, user_type: 'barbero' } } }); if (error) { this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error en el registro: ${error.message}. Por favor, inténtalo de nuevo.</p></div>`); this.startWelcomeFlow(); return; } if (data.user) { this.currentUser = data.user; await this.createBarberProfile(data.user.id); this.addBotMessage('<div class="bot-card"><h3>¡Cuenta Creada! 🚀</h3><p>Tu registro fue un éxito. Te he enviado un correo de confirmación. Una vez que lo verifiques, tendrás acceso a todo.</p></div>'); this.showMainMenu(); this.currentFlow = 'authenticated'; } }
+        
+        async handleAuthFlow(input, originalText = null) {
+            if (originalText === null) originalText = input;
+            switch(this.currentFlow) {
+                case 'welcome':
+                    if (input === 'barbero') {
+                        this.addBotMessage(`<div class="bot-card"><p>¡Excelente! ¿Ya tienes una cuenta con nosotros?</p><p>Por favor, responde <strong>sí</strong> o <strong>no</strong>.</p></div>`);
+                        this.currentFlow = 'has_account';
+                    } else {
+                        this.addBotMessage(`<div class="bot-card"><p>Entendido. Esta interfaz está diseñada especialmente para barberos. ¡Esperamos verte pronto!</p></div>`);
+                    }
+                    break;
+                case 'has_account':
+                    if (input.startsWith('s')) {
+                        this.addBotMessage('<div class="bot-card"><p>¡Perfecto! Por favor, ingresa tu correo electrónico para iniciar sesión.</p></div>');
+                        this.currentFlow = 'login_email';
+                    } else {
+                        this.addBotMessage('<div class="bot-card"><p>¡Genial, vamos a crear tu cuenta! Primero, ¿cuál es tu nombre?</p></div>');
+                        this.currentFlow = 'register_name';
+                    }
+                    break;
+                case 'register_name':
+                    this.userData.firstName = originalText;
+                    this.addBotMessage(`<div class="bot-card"><p>¡Un placer, ${this.capitalizeName(originalText)}! Ahora, ¿cuál es tu apellido?</p></div>`);
+                    this.currentFlow = 'register_last_name';
+                    break;
+                case 'register_last_name':
+                    this.userData.lastName = originalText;
+                    this.addBotMessage('<div class="bot-card"><p>Muy bien. Ahora necesito tu correo electrónico. Lo usaremos para iniciar sesión.</p></div>');
+                    this.currentFlow = 'register_email';
+                    break;
+                case 'register_email':
+                    this.userData.email = input;
+                    this.addBotMessage('<div class="bot-card"><p>Para terminar, crea una contraseña segura (debe tener al menos 6 caracteres).</p></div>');
+                    this.currentFlow = 'register_password';
+                    break;
+                case 'register_password':
+                    if (input.length < 6) {
+                        this.addBotMessage('<div class="bot-card"><p>La contraseña es muy corta. Por seguridad, necesita al menos 6 caracteres. ¡Intenta con otra!</p></div>');
+                        return;
+                    }
+                    this.userData.password = input;
+                    await this.registerUser();
+                    break;
+                case 'login_email':
+                    this.userData.email = input;
+                    this.addBotMessage('<div class="bot-card"><p>Gracias. Ahora, ingresa tu contraseña.</p></div>');
+                    this.currentFlow = 'login_password';
+                    break;
+                case 'login_password':
+                    await this.loginUser(input);
+                    break;
+            }
+        }
+        
+        async registerUser() {
+            // --- MEJORA APLICADA AQUÍ ---
+            // Se capitalizan los nombres antes de enviarlos a la base de datos
+            const firstNameFormatted = this.capitalizeName(this.userData.firstName);
+            const lastNameFormatted = this.capitalizeName(this.userData.lastName);
+
+            const { data, error } = await supabase.auth.signUp({
+                email: this.userData.email,
+                password: this.userData.password,
+                options: {
+                    data: {
+                        first_name: firstNameFormatted,
+                        last_name: lastNameFormatted,
+                        user_type: 'barbero'
+                    }
+                }
+            });
+            if (error) {
+                this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error en el registro: ${error.message}. Por favor, inténtalo de nuevo.</p></div>`);
+                this.startWelcomeFlow();
+                return;
+            }
+            if (data.user) {
+                this.currentUser = data.user;
+                await this.createBarberProfile(data.user.id);
+                this.addBotMessage('<div class="bot-card"><h3>¡Cuenta Creada! 🚀</h3><p>Tu registro fue un éxito. Te he enviado un correo de confirmación. Una vez que lo verifiques, tendrás acceso a todo.</p></div>');
+                this.showMainMenu();
+                this.currentFlow = 'authenticated';
+            }
+        }
         
         async createBarberProfile(userId) {
             const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-            const barberName = this.userData.firstName;
+            // --- MEJORA APLICADA AQUÍ ---
+            const barberName = this.capitalizeName(this.userData.firstName);
+            const shopName = `Barbería de ${barberName}`;
             const initialAvailability = { [barberName]: {} };
             const initialServices = { [barberName]: [] };
-
             await supabase.from('barbers').insert([{ 
                 user_id: userId, 
-                first_name: this.userData.firstName, 
-                last_name: this.userData.lastName, 
-                barber_shop_name: `Barbería de ${this.userData.firstName}`, 
+                first_name: barberName,
+                last_name: this.capitalizeName(this.userData.lastName),
+                barber_shop_name: shopName, 
                 services: initialServices,
                 availability: initialAvailability,
                 public_code: code,
@@ -1551,48 +1450,38 @@ async deleteProfilePicture() {
             }]); 
         }
 
-// ⬇️ REEMPLAZA TU FUNCIÓN ACTUAL POR ESTA VERSIÓN MEJORADA EN index.html ⬇️
-async loginUser(password) {
-    this.showTyping(); // Añade un feedback visual mientras se procesa
-    const { data, error } = await supabase.auth.signInWithPassword({
-        email: this.userData.email,
-        password: password
-    });
-    this.hideTyping();
-
-    if (error) {
-        // 1. Siempre registra el error en la consola para depuración
-        console.error("Error de inicio de sesión de Supabase:", error);
-
-        // 2. Comprueba si el error es por falta de confirmación de email
-        if (error.message && error.message.includes('Email not confirmed')) {
-            this.addBotMessage(
-                `<div class="bot-card" style="background-color: #ffffcc;">
-                    <p><strong>⚠️ Tu cuenta no ha sido confirmada.</strong></p>
-                    <p>Por favor, revisa tu bandeja de entrada (y la carpeta de spam) y haz clic en el enlace de confirmación que te enviamos al registrarte.</p>
-                </div>`
-            );
-        } else {
-            // 3. Para cualquier otro error, muestra el mensaje genérico mejorado
-            this.addBotMessage(
-                `<div class="bot-card">
-                    <p>❌ Usuario o contraseña incorrectos.</p>
-                    <small style="color: #666;">Si el problema persiste, asegúrate de que tus datos son correctos y que has confirmado tu correo electrónico.</small>
-                </div>`
-            );
+        async loginUser(password) {
+            this.showTyping();
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email: this.userData.email,
+                password: password
+            });
+            this.hideTyping();
+            if (error) {
+                console.error("Error de inicio de sesión de Supabase:", error);
+                if (error.message && error.message.includes('Email not confirmed')) {
+                    this.addBotMessage(
+                        `<div class="bot-card" style="background-color: #ffffcc;">
+                            <p><strong>⚠️ Tu cuenta no ha sido confirmada.</strong></p>
+                            <p>Por favor, revisa tu bandeja de entrada (y la carpeta de spam) y haz clic en el enlace de confirmación que te enviamos al registrarte.</p>
+                        </div>`
+                    );
+                } else {
+                    this.addBotMessage(
+                        `<div class="bot-card">
+                            <p>❌ Usuario o contraseña incorrectos.</p>
+                            <small style="color: #666;">Si el problema persiste, asegúrate de que tus datos son correctos y que has confirmado tu correo electrónico.</small>
+                        </div>`
+                    );
+                }
+                this.currentFlow = 'has_account';
+                setTimeout(() => this.handleAuthFlow('si'), 1500);
+                return;
+            }
+            this.currentUser = data.user;
+            this.addBotMessage('<div class="bot-card"><p>✅ ¡Inicio de sesión exitoso!</p></div>');
+            this.checkAuthState();
         }
-        
-        // Reinicia el flujo para que el usuario pueda intentarlo de nuevo
-        this.currentFlow = 'has_account';
-        setTimeout(() => this.handleAuthFlow('si'), 1500);
-        return;
-    }
-    
-    // Si no hay error, el inicio de sesión es exitoso
-    this.currentUser = data.user;
-    this.addBotMessage('<div class="bot-card"><p>✅ ¡Inicio de sesión exitoso!</p></div>');
-    this.checkAuthState();
-}
         
         async logout() { 
             await supabase.auth.signOut(); 
@@ -1631,7 +1520,6 @@ async loginUser(password) {
                     table: 'bookings',
                     filter: `barber_id=eq.${this.barberProfile.id}`
                 }, payload => {
-                    // --- BLOQUE MODIFICADO ---
                     this.newBookingsData.push(payload.new);
                     this.updateBadges();
                 })
@@ -1640,7 +1528,6 @@ async loginUser(password) {
 
         async subscribeToTransactions() {
             if (this.transactionsSubscription || !this.barberProfile) return;
-            
             this.transactionsSubscription = supabase
                 .channel(`barber_transactions_${this.barberProfile.id}`)
                 .on('postgres_changes', {
@@ -1651,9 +1538,7 @@ async loginUser(password) {
                 }, async (payload) => {
                     this.newTransactionsCount++;
                     this.updateBadges();
-
                     await this.refreshProfileFromDB();
-
                     if (document.querySelector('[data-command="/finanzas"]')) {
                          this.addBotMessage(`<div class="bot-card" style="border-left: 4px solid #28a745;"><p><strong>¡Nuevo pago recibido!</strong> Tu saldo ha sido actualizado.</p></div>`);
                     }
@@ -1674,9 +1559,7 @@ async loginUser(password) {
                     const listItem = document.createElement('li'); 
                     listItem.dataset.chatId = chat.id; listItem.dataset.clientId = client.id; 
                     listItem.dataset.clientName = clientName; 
-                    
                     const isUnread = this.unreadCounts[chat.id] > 0;
-                    
                     listItem.innerHTML = `<div class="avatar">${clientName.charAt(0)}</div><div class="chat-info"><div class="chat-name">${clientName}</div></div><div class="unread-indicator ${isUnread ? 'visible' : ''}" id="unread-${chat.id}"></div>`; 
                     listItem.addEventListener('click', () => this.openChat(chat.id, client.id, clientName)); 
                     this.clientChatsList.appendChild(listItem); 
@@ -1697,32 +1580,36 @@ async loginUser(password) {
             this.switchView('singleChatView'); 
             this.singleChatMessages.innerHTML = 'Cargando mensajes...'; 
             const { data: messages, error } = await supabase.from('messages').select('*').eq('chat_id', chatId).order('created_at', { ascending: true }); 
-            this.singleChatMessages.innerHTML = ''; 
-            if (messages) messages.forEach(msg => this.renderMessage(msg, this.singleChatMessages, false)); 
-            this.singleChatMessages.scrollTop = this.singleChatMessages.scrollHeight; 
-            this.subscribeToChatChannel(chatId); 
-        }
-
-        subscribeToChatChannel(chatId) { 
-            if (this.chatSubscription) this.chatSubscription.unsubscribe(); 
-            this.chatSubscription = supabase.channel(`chat_${chatId}`)
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}`}, (payload) => { 
-                    if (payload.new.sender_type === 'client') this.renderMessage(payload.new, this.singleChatMessages); 
-                }).subscribe(); 
+            this.singleChatMessages.innerHTML = '';
+            if (messages) {
+                messages.forEach(msg => this.renderMessage(msg, this.singleChatMessages, false));
+                this.singleChatMessages.scrollTop = this.singleChatMessages.scrollHeight;
+            }
+            if(this.chatSubscription) this.chatSubscription.unsubscribe();
+            this.chatSubscription = supabase.channel(`barber_chat_${chatId}`)
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` }, payload => {
+                    if(payload.new.sender_type === 'client') {
+                        this.renderMessage(payload.new, this.singleChatMessages);
+                    }
+                }).subscribe();
         }
         
-        async sendClientMessage(text) { 
-            if (!this.activeChat.id) return; 
-            const messagePayload = { chat_id: this.activeChat.id, sender_type: 'barber', sender_id: this.barberProfile.id, content: text }; 
-            this.renderMessage({ ...messagePayload }, this.singleChatMessages); 
-            await supabase.from('messages').insert(messagePayload); 
+        async sendClientMessage(text) {
+            const payload = {
+                chat_id: this.activeChat.id,
+                sender_id: this.currentUser.id,
+                sender_type: 'barber',
+                content: text
+            };
+            this.renderMessage({ ...payload, sender: 'user' }, this.singleChatMessages);
+            await supabase.from('messages').insert(payload);
         }
     }
-    
+
     let app;
     document.addEventListener('DOMContentLoaded', () => {
         app = new ChatApp();
-    }); 
+    });
 </script>
 </body>
 </html>
