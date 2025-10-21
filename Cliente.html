@@ -300,12 +300,25 @@
                     this.qrScanner = null;
                 }
                 
-                if (this.currentFlow === 'live_chat') {
-                    if (input === '/menu') {
+               if (this.currentFlow === 'live_chat') {
+                    if (input === 'menu') { // Corregido para que coincida con el data-command
                         this.addUserMessage("Volver al menú");
-                        if (this.chatSubscription) this.chatSubscription.unsubscribe();
+                        
+                        // --- INICIO DE LA CORRECCIÓN ---
+                        // 1. Cancelar la suscripción del CHAT EN VIVO
+                        if (this.chatSubscription) {
+                            this.chatSubscription.unsubscribe();
+                            this.chatSubscription = null;
+                        }
+                        // --- FIN DE LA CORRECCIÓN ---
+
                         this.messagesContainer.innerHTML = '';
                         this.showClientMainMenu();
+                        
+                        // --- INICIO DE LA CORRECCIÓN ---
+                        // 2. Reactivar la suscripción de NOTIFICACIÓN (para el ícono)
+                        this.subscribeToNotifications();
+                        // --- FIN DE LA CORRECCIÓN ---
                     }
                     return;
                 }
@@ -841,8 +854,16 @@
             }
             
             async enterLiveChatMode() {
+                // --- INICIO DE LA CORRECCIÓN ---
+                // 1. Cancelar la suscripción de NOTIFICACIÓN (para el ícono)
+                if (this.notificationSubscription) {
+                    this.notificationSubscription.unsubscribe();
+                    this.notificationSubscription = null;
+                }
+                // --- FIN DE LA CORRECCIÓN ---
+
                 this.currentFlow = 'live_chat';
-                this.messagesContainer.innerHTML = ''; 
+                this.messagesContainer.innerHTML = '';
                 this.addBotMessage('<div class="bot-card"><p>Ahora estás chateando directamente con tu barbero. Escribe <strong>/menu</strong> para volver al menú principal.</p></div>');
                 this.resetUnreadCount();
 
