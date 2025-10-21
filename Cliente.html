@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BarberConnect - Cliente</title>
+    <link rel="manifest" href="manifest-cliente.json">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
@@ -855,6 +856,17 @@
         document.addEventListener('DOMContentLoaded', () => {
             app = new ClientChatApp();
         });
+    </script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').then(registration => {
+                    console.log('✅ ServiceWorker para Cliente registrado con éxito!');
+                }).catch(err => {
+                    console.error('❌ Fallo en el registro del ServiceWorker para Cliente: ', err);
+                });
+            });
+        }
     </script>
 </body>
 </html>
