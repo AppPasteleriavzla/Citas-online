@@ -1627,7 +1627,7 @@
                 this.singleChatMessages.scrollTop = this.singleChatMessages.scrollHeight;
             }
             if(this.chatSubscription) this.chatSubscription.unsubscribe();
-            this.chatSubscription = supabase.channel(`barber_chat_${chatId}`)
+            this.chatSubscription = supabase.channel(`chat-room-${chatId}`)
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` }, payload => {
                     if(payload.new.sender_type === 'client') {
                         this.renderMessage(payload.new, this.singleChatMessages);
