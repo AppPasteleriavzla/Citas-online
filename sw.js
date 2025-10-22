@@ -1,9 +1,10 @@
-// sw.js - Versión Final
+// sw.js - Versión Final Mejorada
 
 // v1: Versión de la caché. Cámbiala si actualizas los archivos estáticos.
 const CACHE_NAME = 'citas-online-cache-v1';
 
 // Archivos esenciales de la "App Shell" que se deben cachear.
+// (Estos son los mismos que tú tenías)
 const urlsToCache = [
   './',
   './index.html',
@@ -21,6 +22,7 @@ const urlsToCache = [
 
 // -------------------------------------------------------------------
 // --- GESTIÓN DE CACHÉ E INSTALACIÓN (PARA FUNCIONAMIENTO OFFLINE) ---
+// --- ¡Esta sección no se modificó, ya estaba perfecta! ---
 // -------------------------------------------------------------------
 
 // Evento 'install': Se dispara cuando el Service Worker se instala.
@@ -68,41 +70,85 @@ self.addEventListener('fetch', event => {
 
 
 // -----------------------------------------------------
-// --- GESTIÓN DE NOTIFICACIONES PUSH ---
+// --- GESTIÓN DE NOTIFICACIONES PUSH (MEJORADA) ---
+// --- ¡Aquí está la nueva lógica! ---
 // -----------------------------------------------------
 
 // Evento 'push': Se dispara cuando el servidor envía una notificación.
 self.addEventListener('push', event => {
   console.log('[Service Worker] Notificación Push recibida.');
   
-  // Extraemos la información enviada desde el servidor.
-  const data = event.data.json();
-  
-  const title = data.title || 'BarberConnect';
-  const options = {
-    body: data.body, // El texto principal de la notificación
-    icon: './logo-192.png', // Ícono que se muestra en la notificación
-    badge: './logo-192.png', // Ícono para la barra de estado (en Android)
-    data: {
-      url: data.url || './index.html' // URL a la que se irá al hacer clic
-    }
-  };
+  let data;
+  try {
+    data = event.data.json();
+  } catch (e) {
+    console.error("Error al leer la data de la push notification", e);
+    return; // No se puede hacer nada sin data
+  }
 
-  // Muestra la notificación al usuario.
-  event.waitUntil(
-    self.registration.showNotification(title, options)
-  );
+  // --- LÓGICA DE DECISIÓN (LA MEJORA) ---
+  // Revisa si es un mensaje de chat (el 'type' que definimos en la Edge Function)
+  if (data.type === 'chat_message') {
+    // --- LÓGICA PARA MENSAJES DE CHAT ---
+    console.log("Manejando como CHAT.");
+    const title = data.title; // Título es el nombre del remitente (Ej: "Juan Pérez")
+    const options = {
+      body: data.body,         // Cuerpo es el mensaje (Ej: "Hola, ¿cómo estás?")
+      icon: data.icon || './logo-maskable-192.png', // Ícono es el avatar del remitente (o un fallback)
+      badge: './logo-maskable-192.png', // Un ícono genérico para la barra
+      data: {
+        url: data.url // URL para abrir (index.html o Cliente.html)
+      }
+    };
+    event.waitUntil(self.registration.showNotification(title, options));
+
+  } else {
+    // --- LÓGICA PARA CITAS (O CUALQUIER OTRA NOTIF) ---
+    // (Esta es la lógica que ya tenías, que funciona para tus notificaciones de citas)
+    console.log("Manejando como CITA (o genérica).");
+    const title = data.title || 'BarberConnect'; // Título genérico
+    const options = {
+      body: data.body,
+      icon: './logo-192.png', // Ícono genérico de la app
+      badge: './logo-maskable-192.png',
+      data: {
+        url: data.url || './index.html' // URL de fallback
+      }
+    };
+    event.waitUntil(self.registration.showNotification(title, options));
+  }
 });
 
 // Evento 'notificationclick': Se dispara cuando el usuario hace clic en la notificación.
+// (MEJORADO para no abrir pestañas duplicadas)
 self.addEventListener('notificationclick', event => {
   console.log('[Service Worker] Clic en notificación recibido.');
   
-  // Cierra la notificación.
-  event.notification.close();
+  event.notification.close(); // Cierra la notificación
 
-  // Abre la URL asociada a la notificación en una nueva ventana o pestaña.
+  const urlToOpen = event.notification.data.url || './'; // URL a abrir
+
+  // Lógica avanzada para enfocar la ventana si ya está abierta
   event.waitUntil(
-    clients.openWindow(event.notification.data.url)
+    clients.matchAll({
+      type: "window",
+      includeUncontrolled: true // Importante para que funcione bien
+    }).then(clientList => {
+      
+      // Buscar si hay una ventana con esa URL
+      // Usamos 'includes' para que funcione bien con la URL base
+      for (const client of clientList) {
+        if (client.url.includes(urlToOpen) && 'focus' in client) {
+          console.log("Enfocando cliente existente.");
+          return client.focus();
+        }
+      }
+      
+      // Si no se encontró una ventana, abrir una nueva
+      if (clients.openWindow) {
+        console.log("Abriendo nueva ventana.");
+        return clients.openWindow(urlToOpen);
+      }
+    })
   );
 });
