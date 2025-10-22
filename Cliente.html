@@ -165,7 +165,6 @@
     }
     .barber-profile-pic { width: 100%; height: 100%; object-fit: cover; }
     
-    /* --- INICIO: Estilos para el nuevo Botón de Menú --- */
     .menu-button {
         display: none; /* Oculto por defecto */
         flex-shrink: 0;
@@ -189,9 +188,7 @@
         height: 100%;
         fill: #E0E0E0;
     }
-    /* --- FIN: Estilos para el nuevo Botón de Menú --- */
 
-    /* --- INICIO: NUEVOS ESTILOS PARA PERFIL DE CLIENTE --- */
     .profile-avatar-wrapper { display: flex; justify-content: center; margin-bottom: 16px; }
     .profile-avatar {
         width: 100px; height: 100px; border-radius: 50%; background-color: #FFB300; color: #121212;
@@ -228,9 +225,6 @@
     }
     .bot-card .item-name { font-weight: 500; color: #E0E0E0; }
     .bot-card .item-detail { color: #A0A0A0; font-size: 0.9em; text-align: right; }
-    /* --- FIN: NUEVOS ESTILOS PARA PERFIL DE CLIENTE --- */
-
-    /* --- FIN: NUEVOS ESTILOS DARK MODE --- */
 </style>
 </head>
 <body>
@@ -242,7 +236,7 @@
             </div>
             <div class="header-icons">
                 <div class="icon-wrapper" id="messagesIconWrapper" title="Ver mensajes">
-                    <svg xmlns="http://www.w.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 10H6v-2h12v2zm0-4H6V6h12v2z"></path></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 10H6v-2h12v2zm0-4H6V6h12v2z"></path></svg>
                     <span class="notification-badge" id="notificationBadge"></span>
                 </div>
             </div>
@@ -289,7 +283,6 @@
                 this.messagesIconWrapper = document.getElementById('messagesIconWrapper');
                 this.menuButton = document.getElementById('menuButton'); 
                 
-                // --- NUEVO ---
                 this.clientPicInput = null; 
 
                 this.mainMenuButton = `<div class="command-buttons-container" style="margin-top: 15px;"><button class="command-button" data-command="menu">↩️ Volver al Menú</button></div>`;
@@ -310,33 +303,107 @@
                 
                 this.menuButton.addEventListener('click', () => this.handleMenuButton());
                 
-                // --- NUEVO ---
                 this.clientPicInput = document.getElementById('clientPicInput');
                 this.clientPicInput.addEventListener('change', (event) => this.uploadClientPicture(event));
 
                 await this.checkConnection();
             }
             
-            // --- NUEVA FUNCIÓN ---
+            // --- INICIO: LÓGICA PARA NOTIFICACIONES PUSH ---
+            /**
+             * Pide permiso al usuario para enviar notificaciones y lo suscribe.
+             */
+            async registerServiceWorker() {
+                if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+                    this.addBotMessage('<div class="bot-card"><p>❌ Tu navegador no es compatible con las notificaciones.</p></div>');
+                    return;
+                }
+
+                const currentPermission = Notification.permission;
+                if (currentPermission === 'granted') {
+                    this.addBotMessage('<div class="bot-card"><p>✅ ¡Las notificaciones ya están activas!</p></div>');
+                    return;
+                }
+                if (currentPermission === 'denied') {
+                    this.addBotMessage('<div class="bot-card"><p>🚫 Has bloqueado las notificaciones. Debes activarlas en la configuración de tu navegador.</p></div>');
+                    return;
+                }
+
+                this.showTyping();
+                try {
+                    const swRegistration = await navigator.serviceWorker.ready;
+                    const permissionResult = await window.Notification.requestPermission();
+
+                    if (permissionResult !== 'granted') {
+                        this.hideTyping();
+                        this.addBotMessage('<div class="bot-card"><p>⚠️ Permiso denegado. No recibirás notificaciones.</p></div>');
+                        return;
+                    }
+
+                    // Reemplaza esta clave con tu CLAVE PÚBLICA VAPID
+                    const vapidPublicKey = 'TU_CLAVE_PUBLICA_VAPID_AQUI'; 
+                    const pushSubscription = await swRegistration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
+                    });
+
+                    await this.savePushSubscription(pushSubscription);
+                } catch (error) {
+                    console.error("Error durante el registro de notificaciones:", error);
+                    this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error al activar las notificaciones: ${error.message}</p></div>`);
+                } finally {
+                    this.hideTyping();
+                }
+            }
+
+            /**
+             * Guarda la suscripción en la base de datos para el cliente actual.
+             */
+            async savePushSubscription(subscription) {
+                if (!this.clientProfile || !this.clientProfile.id) {
+                    this.addBotMessage('<div class="bot-card"><p>Error crítico: No pude identificarte. Intenta recargar.</p></div>');
+                    return;
+                }
+                
+                const { error } = await supabase
+                  .from('clients')
+                  .update({ push_subscription: subscription })
+                  .eq('id', this.clientProfile.id);
+
+                if (error) {
+                    console.error("Fallo al guardar la suscripción:", error);
+                    this.addBotMessage(`<div class="bot-card"><p>❌ Error en la base de datos al guardar la configuración.<br><small>${error.message}</small></p></div>`);
+                } else {
+                    this.addBotMessage('<div class="bot-card" style="border-left: 4px solid #4CAF50;"><p><strong>¡Listo! ✅</strong> Recibirás notificaciones de nuevos mensajes.</p></div>');
+                }
+            }
+            
+            /**
+             * Helper para convertir la clave VAPID.
+             */
+            urlBase64ToUint8Array(base64String) {
+                const padding = '='.repeat((4 - base64String.length % 4) % 4);
+                const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+                const rawData = window.atob(base64);
+                const outputArray = new Uint8Array(rawData.length);
+                for (let i = 0; i < rawData.length; ++i) {
+                  outputArray[i] = rawData.charCodeAt(i);
+                }
+                return outputArray;
+            }
+            // --- FIN: LÓGICA PARA NOTIFICACIONES PUSH ---
+
             handleMenuButton() {
                 if (this.currentFlow !== 'live_chat') return; 
 
-                // 1. Desuscribirse del chat en vivo
                 if (this.chatSubscription) {
                     this.chatSubscription.unsubscribe();
                     this.chatSubscription = null;
                 }
                 
-                // 2. Limpiar la pantalla de chat
                 this.messagesContainer.innerHTML = '';
-                
-                // 3. Ocultar el botón de menú
                 this.menuButton.classList.remove('visible');
-                
-                // 4. Mostrar el menú principal (esto resetea el flow)
                 this.showClientMainMenu();
-                
-                // 5. Reactivar las notificaciones de ícono
                 this.subscribeToNotifications();
             }
 
@@ -374,7 +441,7 @@
             }
 
             async handleButtonClick(event) {
-                const button = event.target.closest('.command-button, .edit-icon-button'); // --- MODIFICADO ---
+                const button = event.target.closest('.command-button, .edit-icon-button');
                 if (!button || button.disabled) return;
                 
                 const container = button.closest('.command-buttons-container');
@@ -387,14 +454,11 @@
                 }
                 
                 const command = button.dataset.command;
-
-                // --- NUEVA LÓGICA ---
-                // Si el botón es el de editar nombre, no mostramos el mensaje del usuario
+                
                 if(command === '/editar_client_name') {
                     await this.processUserInput(command);
                     return;
                 }
-                // --- FIN ---
 
                 this.addUserMessage(button.textContent.trim());
                 await this.processUserInput(command);
@@ -419,9 +483,7 @@
                     this.qrScanner = null;
                 }
                 
-               // Modificado: El modo chat en vivo ahora se maneja con el botón
                if (this.currentFlow === 'live_chat') {
-                    // Si el usuario escribe "menu" manualmente, también funciona
                     if (input === 'menu') { 
                         this.handleMenuButton();
                     }
@@ -446,7 +508,6 @@
                     return;
                 }
 
-                // --- FLUJO DE AUTENTICACIÓN MEJORADO ---
                 if (this.currentFlow === 'awaiting_code') {
                     await this.handleCodeEntry(input);
                     return; 
@@ -456,7 +517,6 @@
                     await this.findOrCreateClientByPhone(input);
                     return; 
                 }
-                // --- FIN DEL FLUJO DE AUTENTICACIÓN ---
 
                 switch (this.currentFlow) {
                     case 'booking_date':
@@ -473,7 +533,6 @@
                             this.showClientMainMenu();
                          }
                         return;
-                    // --- FLUJO DE PERFIL MODIFICADO ---
                     case 'editing_profile_firstname':
                         this.profileUpdateData.firstName = input;
                         this.addBotMessage(`<div class="bot-card"><p>¡Entendido, ${input}!</p><p>Ahora, por favor, dime tu apellido.</p>${this.mainMenuButton}</div>`);
@@ -483,7 +542,6 @@
                         this.profileUpdateData.lastName = input;
                         await this.updateClientProfile();
                         return;
-                    // --- FIN ---
                 }
                 
                 if (input.startsWith('reservar_servicio:')) {
@@ -502,12 +560,11 @@
                     case '/hablar': await this.enterLiveChatMode(); break;
                     case '/miperfil': await this.startProfileEditFlow(); break;
                     case '/pagar_qr': await this.startQRScanner(); break;
-                    // --- NUEVO COMANDO INTERNO ---
+                    case '/suscribirse_notificaciones': await this.registerServiceWorker(); break; // Manejar el nuevo comando
                     case '/editar_client_name':
                         this.addBotMessage(`<div class="bot-card"><p>Tu nombre actual es <strong>${this.clientProfile.first_name}</strong>.</p><p>Por favor, escribe tu nuevo nombre.</p>${this.mainMenuButton}</div>`);
                         this.currentFlow = 'editing_profile_firstname';
                         break;
-                    // --- FIN ---
                     case 'menu': this.showClientMainMenu(); break;
                     default:
                         this.addBotMessage(`<div class="bot-card"><p>Actualmente, no puedo responder de manera natural. Sin embargo, puedes explorar utilizando los botones del menú. 😀</p></div>`);
@@ -515,8 +572,6 @@
                         break;
                 }
             }
-
-            // ===== NUEVAS FUNCIONES PARA EL ESCANEO Y PAGO QR =====
 
             async startQRScanner() {
                 const scannerHTML = `
@@ -594,7 +649,6 @@
 
                 const { amount, description, performer } = this.paymentDataToConfirm;
 
-                // 1. Insertar la transacción en la tabla
                 const { error: transactionError } = await supabase
                     .from('transactions')
                     .insert({
@@ -613,7 +667,6 @@
                     return;
                 }
 
-                // 2. Llamar a la función RPC para actualizar el saldo del barbero
                 const { error: rpcError } = await supabase.rpc('increment_barber_balance', {
                     barber_id_in: this.barberData.id,
                     amount_in: parseFloat(amount)
@@ -632,13 +685,9 @@
                 setTimeout(() => this.showClientMainMenu(), 2000);
             }
             
-            // ===== FIN DE LAS NUEVAS FUNCIONES =====
-            
-            // --- FUNCIÓN MODIFICADA ---
             async startProfileEditFlow() {
                 this.showTyping();
                 
-                // Asegurarnos de que tenemos los datos más frescos
                 const { data: profile, error } = await supabase
                     .from('clients')
                     .select('*')
@@ -652,7 +701,7 @@
                     return;
                 }
                 
-                this.clientProfile = profile; // Actualizamos el perfil local
+                this.clientProfile = profile; 
                 
                 let avatarHTML = '';
                 if (profile.avatar_url) {
@@ -700,10 +749,9 @@
                 </div>`;
                 
                 this.addBotMessage(profileHTML);
-                this.currentFlow = 'profile_menu'; // Cambiamos el flow
+                this.currentFlow = 'profile_menu';
             }
 
-            // --- FUNCIÓN MODIFICADA ---
             async updateClientProfile() {
                 this.showTyping();
                 const { firstName, lastName } = this.profileUpdateData;
@@ -712,8 +760,8 @@
                     .from('clients')
                     .update({ first_name: firstName, last_name: lastName })
                     .eq('id', this.clientProfile.id)
-                    .select() // --- Añadido para obtener los datos actualizados
-                    .single(); // ---
+                    .select()
+                    .single();
 
                 this.hideTyping();
 
@@ -721,16 +769,14 @@
                     console.error("Error updating profile:", error);
                     this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error al actualizar tu perfil.</p>${this.mainMenuButton}</div>`);
                 } else {
-                    this.clientProfile = updatedClient; // --- Actualizamos el perfil local
+                    this.clientProfile = updatedClient;
                     this.addBotMessage(`<div class="bot-card"><p>✅ ¡Perfecto, ${firstName}! Tu perfil ha sido actualizado.</p></div>`);
                 }
 
                 this.profileUpdateData = {};
-                this.currentFlow = 'authenticated'; // Reseteamos el flow
-                setTimeout(() => this.startProfileEditFlow(), 1000); // Volvemos al menú de perfil
+                this.currentFlow = 'authenticated';
+                setTimeout(() => this.startProfileEditFlow(), 1000);
             }
-            
-            // --- NUEVAS FUNCIONES PARA FOTO DE PERFIL (ADAPTADAS DE index.html) ---
             
             triggerClientFileUpload() {
                 this.clientPicInput.click();
@@ -753,17 +799,15 @@
                 this.addBotMessage('<div class="bot-card"><p>Subiendo foto, por favor espera... ⏳</p></div>');
                 this.showTyping();
                 
-                const bucketName = 'client_pictures'; // El bucket que creamos
-                // Usamos el ID del cliente para la ruta, asegurando que sea único
+                const bucketName = 'client_pictures';
                 const filePath = `${this.clientProfile.id}/profile.png`; 
 
                 try {
-                    // Subimos la imagen
                     const { error: uploadError } = await supabase.storage
                         .from(bucketName)
                         .upload(filePath, file, {
                             cacheControl: '3600',
-                            upsert: true, // Sobrescribe la imagen si ya existe
+                            upsert: true,
                         });
 
                     if (uploadError) {
@@ -771,15 +815,12 @@
                         throw new Error(`Error de Storage: ${uploadError.message}`);
                     }
 
-                    // Obtenemos la URL pública
                     const { data: urlData } = supabase.storage
                         .from(bucketName)
                         .getPublicUrl(filePath);
                         
-                    // Añadimos un timestamp para evitar problemas de caché
                     const publicURLWithCacheBuster = `${urlData.publicUrl}?t=${new Date().getTime()}`;
 
-                    // Actualizamos la tabla 'clients' con la nueva URL
                     const { data: updatedProfile, error: dbError } = await supabase
                         .from('clients')
                         .update({ avatar_url: publicURLWithCacheBuster })
@@ -792,7 +833,7 @@
                         throw new Error(`Error de Base de Datos: ${dbError.message}`);
                     }
 
-                    this.clientProfile = updatedProfile; // Actualizamos el perfil local
+                    this.clientProfile = updatedProfile;
                     this.addBotMessage('<div class="bot-card"><p>✅ ¡Foto de perfil actualizada con éxito!</p></div>');
                     
                 } catch (error) {
@@ -803,13 +844,12 @@
                     </div>`);
                 } finally {
                     this.hideTyping();
-                    this.clientPicInput.value = ''; // Reseteamos el input
-                    await this.startProfileEditFlow(); // Mostramos el perfil actualizado
+                    this.clientPicInput.value = '';
+                    await this.startProfileEditFlow();
                 }
             }
             
             async deleteClientPicture() {
-                // Usamos un confirm nativo por simplicidad
                 if (!confirm("¿Estás seguro de que quieres eliminar tu foto de perfil?")) return;
 
                 this.addBotMessage('<div class="bot-card"><p>Eliminando foto...</p></div>');
@@ -819,18 +859,15 @@
                 const filePath = `${this.clientProfile.id}/profile.png`;
 
                 try {
-                    // 1. Borrar de Storage
                     const { error: removeError } = await supabase.storage
                         .from(bucketName)
                         .remove([filePath]);
                     
-                    // Ignoramos el error si el archivo no existía, pero logueamos otros errores
                     if (removeError && removeError.message !== 'The resource was not found') {
                          console.error("Error borrando de Storage:", removeError);
                          throw new Error(`Error de Storage: ${removeError.message}`);
                     }
 
-                    // 2. Borrar de la Base de Datos (poner en null)
                     const { data: updatedProfile, error: dbError } = await supabase
                         .from('clients')
                         .update({ avatar_url: null })
@@ -843,7 +880,7 @@
                         throw new Error(`Error de Base de Datos: ${dbError.message}`);
                     }
 
-                    this.clientProfile = updatedProfile; // Actualizamos localmente
+                    this.clientProfile = updatedProfile;
                     this.addBotMessage('<div class="bot-card"><p>✅ Foto eliminada correctamente.</p></div>');
 
                 } catch (error) {
@@ -853,11 +890,9 @@
                     </div>`);
                 } finally {
                     this.hideTyping();
-                    await this.startProfileEditFlow(); // Mostramos el perfil actualizado
+                    await this.startProfileEditFlow();
                 }
             }
-
-            // --- FIN DE NUEVAS FUNCIONES DE FOTO DE PERFIL ---
 
             parseDateInput(input) {
                 const now = new Date();
@@ -988,7 +1023,6 @@
                 if (storedCode && clientId) {
                     this.showTyping();
                     const { data: barber, error: barberError } = await supabase.from('barbers').select('*').eq('public_code', storedCode).single();
-                    // --- MODIFICADO ---: Pedimos el avatar_url
                     const { data: client, error: clientError } = await supabase.from('clients').select('*, avatar_url').eq('id', clientId).single();
                     this.hideTyping();
                     
@@ -1042,13 +1076,12 @@
                 
                 const { data: existingClient, error: findError } = await supabase
                     .from('clients')
-                    .select('*, avatar_url') // --- MODIFICADO ---
+                    .select('*, avatar_url')
                     .eq('linked_barber_id', this.barberData.id)
                     .eq('phone_number', phone)
                     .single(); 
 
                 if (existingClient) {
-                    // --- CLIENTE ENCONTRADO ---
                     this.hideTyping();
                     this.clientProfile = existingClient;
                     localStorage.setItem('client_id', this.clientProfile.id);
@@ -1062,7 +1095,6 @@
                     this.subscribeToNotifications();
 
                 } else {
-                    // --- CLIENTE NUEVO ---
                     const anonymousName = `Anónimo-${Math.random().toString(36).substring(2, 8)}`;
                     const { data: newClient, error: createError } = await supabase
                         .from('clients')
@@ -1072,7 +1104,7 @@
                             linked_barber_id: this.barberData.id,
                             phone_number: phone 
                         })
-                        .select('*, avatar_url') // --- MODIFICADO ---
+                        .select('*, avatar_url')
                         .single();
                     
                     this.hideTyping();
@@ -1149,7 +1181,6 @@
                 });
             }
             
-            // --- FUNCIÓN MODIFICADA ---
             showClientMainMenu() {
                 const menuHTML = `<div class="bot-card"><h3>Menú Principal</h3><p>¿Cómo puedo ayudarte hoy?</p><div class="command-buttons-container">
                 <button class="command-button" data-command="/reservar">📅 Hacer una Reserva</button>
@@ -1157,11 +1188,11 @@
                 <button class="command-button" data-command="/horario">⏰ Ver Horario</button>
                 <button class="command-button" data-command="/miperfil">👤 Mi Perfil</button>
                 <button class="command-button" data-command="/hablar">💬 Hablar con el Barbero</button>
+                <button class="command-button" data-command="/suscribirse_notificaciones">🔔 Activar Notificaciones</button>
                 <button class="command-button full-width" style="background-color: #4CAF50; color: white;" data-command="/pagar_qr">📲 Pagar con QR</button>
                 </div></div>`;
                 this.addBotMessage(menuHTML);
                 this.currentFlow = 'main_menu';
-                // Resetear placeholder
                 this.messageInput.placeholder = "Usa los botones o escribe 'menu'";
             }
 
@@ -1227,7 +1258,6 @@
                 }
             }
             
-            // --- FUNCIÓN MODIFICADA ---
             async enterLiveChatMode() {
                 if (this.notificationSubscription) {
                     this.notificationSubscription.unsubscribe();
@@ -1237,14 +1267,9 @@
                 this.currentFlow = 'live_chat';
                 this.messagesContainer.innerHTML = '';
                 
-                // --- CAMBIOS ---
-                // 1. Mostrar el botón de menú
                 this.menuButton.classList.add('visible');
-                // 2. Cambiar el placeholder
                 this.messageInput.placeholder = "Escribe un mensaje al barbero...";
-                // 3. Quitar la instrucción de texto
                 this.addBotMessage('<div class="bot-card"><p>Ahora estás chateando directamente con tu barbero.</p></div>'); 
-                // --- FIN DE CAMBIOS ---
 
                 this.resetUnreadCount();
 
