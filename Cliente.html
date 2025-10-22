@@ -341,7 +341,7 @@
                     }
 
                     // Reemplaza esta clave con tu CLAVE PÚBLICA VAPID
-                    const vapidPublicKey = 'BJCOJ2WGEu7_29mhcE56t5zkmkmO2phKSVEELfWjTVe1RtmeZOZ5LWZfMyNWpWo7q7jNhBqezFf5MQFNq9NYSqAo'; 
+                    const vapidPublicKey = 'BJCOJ2WGEu7_29mhcE56t5zkmkmO2phKSVEELfWjTVe1RtmeZOZ5LWZfMyNWpWo7q7jNhBqezFf5MQFNq9NYSqA'; 
                     const pushSubscription = await swRegistration.pushManager.subscribe({
                         userVisibleOnly: true,
                         applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
