@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+q<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -562,6 +562,17 @@
                 case 'servicio_add_price':
                     await this.addService(this.userData.tempServiceName, input);
                     break;
+// --- INICIO DE LA CORRECCIÓN ---
+                case 'editing_service':
+                    await this.handleServiceEditFlow(input, originalText);
+                    break;
+                case 'editing_service_name':
+                    await this.updateService('name', originalText);
+                    break;
+                case 'editing_service_price':
+                    await this.updateService('price', input);
+                    break;
+                // --- FIN DE LA CORRECCIÓN ---
                 case 'adding_barber_name':
                     await this.addNewBarberToJSON(originalText.trim());
                     break;
@@ -1349,6 +1360,191 @@
             this.currentFlow = 'authenticated';
             await this.showServices();
         }
+        
+// --- INICIO DE LA CORRECCIÓN: FUNCIONES PARA EDITAR/BORRAR SERVICIOS ---
+
+        /**
+         * Muestra los servicios del barbero actual como botones para que seleccione uno para editar.
+         * Esta es la función que faltaba y que el botón "Editar / Borrar" debía llamar.
+         */
+        async promptServiceSelectionToEdit() {
+            const barberName = this.userData.selectedBarber;
+            const b = await this.getBarberProfile();
+            const servicesOfBarber = (b.services || {})[barberName] || [];
+
+            if (servicesOfBarber.length === 0) {
+                this.addBotMessage(`<div class="bot-card"><p><strong>${barberName}</strong> no tiene servicios para editar.</p></div>`);
+                this.showServicesMenu();
+                return;
+            }
+
+            const buttonsHTML = servicesOfBarber.map(s => {
+                // Convertimos el objeto de servicio a un string JSON para pasarlo en el data-attribute
+                const serviceJSONString = JSON.stringify(s).replace(/"/g, "'"); // Usamos comillas simples
+                return `<button class="command-button" data-service-edit="${serviceJSONString}">${s.name} ($${s.price})</button>`;
+            }).join('');
+
+            const menuHTML = `<div class="bot-card">
+                <h3>Editar/Borrar Servicio</h3>
+                <p>Por favor, selecciona el servicio que quieres modificar para <strong>${barberName}</strong>.</p>
+                <div class="command-buttons-container">
+                    ${buttonsHTML}
+                    <button class="command-button full-width return" data-command="/servicios-interno">↩️ Volver a Servicios</button>
+                </div>
+            </div>`;
+            this.addBotMessage(menuHTML);
+        }
+
+        /**
+         * Inicia el flujo de edición para un servicio específico.
+         * Se llama cuando el barbero hace clic en uno de los servicios de la lista anterior.
+         */
+        async startServiceEditFlow(serviceJSONString) {
+            try {
+                const service = JSON.parse(serviceJSONString.replace(/'/g, '"'));
+                this.userData.tempService = service; // Guardamos el servicio que estamos editando
+                this.currentFlow = 'editing_service'; // Establecemos el nuevo flujo
+
+                const menuHTML = `<div class="bot-card">
+                    <h3>Modificando: ${service.name} ($${service.price})</h3>
+                    <p>¿Qué te gustaría hacer?</p>
+                    <div class="command-buttons-container">
+                        <button class="command-button" data-command="/servicio_edit_name">✏️ Cambiar Nombre</button>
+                        <button class="command-button" data-command="/servicio_edit_price">💲 Cambiar Precio</button>
+                        <button class="command-button cancel" data-command="/servicio_delete_confirm">🗑️ Borrar Servicio</button>
+                        <button class="command-button full-width return" data-command="/servicios-interno editar">↩️ Volver a la lista</button>
+                    </div>
+                </div>`;
+                this.addBotMessage(menuHTML);
+            } catch (e) {
+                console.error("Error al parsear el servicio para editar:", e);
+                this.addBotMessage('<div class="bot-card"><p>❌ Hubo un error al seleccionar ese servicio.</p></div>');
+                this.currentFlow = 'authenticated';
+                this.showServicesMenu();
+            }
+        }
+
+        /**
+         * Maneja los comandos dentro del flujo 'editing_service' (cambiar nombre, precio, borrar).
+         */
+        async handleServiceEditFlow(input, originalText) {
+            switch(input) {
+                case '/servicio_edit_name':
+                    this.addBotMessage(`<div class="bot-card"><p>Introduce el <strong>nuevo nombre</strong> para "${this.userData.tempService.name}":</p></div>`);
+                    this.currentFlow = 'editing_service_name';
+                    break;
+                case '/servicio_edit_price':
+                    this.addBotMessage(`<div class="bot-card"><p>Introduce el <strong>nuevo precio</strong> para "${this.userData.tempService.name}" (sólo el número):</p></div>`);
+                    this.currentFlow = 'editing_service_price';
+                    break;
+                case '/servicio_delete_confirm':
+                    this.addBotMessage(`<div class="bot-card">
+                        <p><strong>¿Estás seguro?</strong> 🧐</p>
+                        <p>Vas a borrar el servicio: <strong>${this.userData.tempService.name}</strong>.</p>
+                        <p style="color: #F44336;">Esta acción no se puede deshacer.</p>
+                        <div class="command-buttons-container">
+                            <button class="command-button cancel" data-command="/servicio_delete_do">Sí, Borrar</button>
+                            <button class="command-button" data-command="/servicios-interno editar">No, Cancelar</button>
+                        </div>
+                    </div>`);
+                    break;
+                case '/servicio_delete_do':
+                    await this.deleteService();
+                    break;
+                case '/servicios-interno editar': // Botón de volver
+                    this.userData.tempService = null;
+                    this.currentFlow = 'authenticated';
+                    await this.promptServiceSelectionToEdit();
+                    break;
+                default:
+                    this.addBotMessage('<div class="bot-card"><p>Por favor, usa uno de los botones.</p></div>');
+                    await this.startServiceEditFlow(JSON.stringify(this.userData.tempService).replace(/"/g, "'"));
+                    break;
+            }
+        }
+
+        /**
+         * Actualiza el nombre o el precio de un servicio en la base de datos.
+         */
+        async updateService(field, value) {
+            this.showTyping();
+            const barberName = this.userData.selectedBarber;
+            const oldService = this.userData.tempService;
+            let newValue = value;
+
+            if (field === 'price') {
+                newValue = parseFloat(value);
+                if (isNaN(newValue) || newValue < 0) {
+                    this.hideTyping();
+                    this.addBotMessage('<div class="bot-card"><p>❌ El precio no es válido. Debe ser un número (ej: 10.50).</p></div>');
+                    this.currentFlow = 'editing_service';
+                    await this.startServiceEditFlow(JSON.stringify(oldService).replace(/"/g, "'"));
+                    return;
+                }
+            } else if (field === 'name') {
+                newValue = this.capitalizeName(value);
+            }
+
+            const b = await this.getBarberProfile();
+            const services = JSON.parse(JSON.stringify(b.services || {}));
+            const servicesOfBarber = services[barberName] || [];
+            
+            const serviceIndex = servicesOfBarber.findIndex(s => s.name === oldService.name);
+            
+            if (serviceIndex === -1) {
+                this.hideTyping();
+                this.addBotMessage('<div class="bot-card"><p>❌ No pude encontrar el servicio para actualizar. Volviendo al menú.</p></div>');
+            } else {
+                servicesOfBarber[serviceIndex][field] = newValue;
+                services[barberName] = servicesOfBarber;
+
+                const { error } = await supabase.from('barbers').update({ services: services }).eq('user_id', this.currentUser.id);
+                this.hideTyping();
+
+                if (error) {
+                    this.addBotMessage('<div class="bot-card"><p>❌ Hubo un error al actualizar el servicio.</p></div>');
+                } else {
+                    this.addBotMessage(`<div class="bot-card"><p>✅ ¡Servicio actualizado con éxito!</p></div>`);
+                    await this.refreshProfileFromDB();
+                }
+            }
+            
+            this.userData.tempService = null;
+            this.currentFlow = 'authenticated';
+            this.showServicesMenu();
+        }
+
+        /**
+         * Borra un servicio de la base de datos.
+         */
+        async deleteService() {
+            this.showTyping();
+            const barberName = this.userData.selectedBarber;
+            const serviceToDelete = this.userData.tempService;
+
+            const b = await this.getBarberProfile();
+            const services = JSON.parse(JSON.stringify(b.services || {}));
+            let servicesOfBarber = services[barberName] || [];
+
+            servicesOfBarber = servicesOfBarber.filter(s => s.name !== serviceToDelete.name);
+            services[barberName] = servicesOfBarber;
+
+            const { error } = await supabase.from('barbers').update({ services: services }).eq('user_id', this.currentUser.id);
+            this.hideTyping();
+
+            if (error) {
+                this.addBotMessage('<div class="bot-card"><p>❌ Hubo un error al borrar el servicio.</p></div>');
+            } else {
+                this.addBotMessage(`<div class="bot-card"><p>✅ El servicio "<strong>${serviceToDelete.name}</strong>" ha sido eliminado.</p></div>`);
+                await this.refreshProfileFromDB();
+            }
+
+            this.userData.tempService = null;
+            this.currentFlow = 'authenticated';
+            this.showServicesMenu();
+        }
+
+        // --- FIN DE LA CORRECCIÓN ---
         
         async setAvailability(dayKey, hours) {
             const barberName = this.userData.selectedBarber;
