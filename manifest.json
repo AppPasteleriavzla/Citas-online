@@ -4,7 +4,7 @@
   "description": "Asistente virtual para la gestión de tu barbería.",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "667eea",
+  "background_color": "#1E1E1E",
 "theme_color": "#1E1E1E",
   "orientation": "portrait-primary",
   "icons": [
