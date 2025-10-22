@@ -191,6 +191,45 @@
     }
     /* --- FIN: Estilos para el nuevo Botón de Menú --- */
 
+    /* --- INICIO: NUEVOS ESTILOS PARA PERFIL DE CLIENTE --- */
+    .profile-avatar-wrapper { display: flex; justify-content: center; margin-bottom: 16px; }
+    .profile-avatar {
+        width: 100px; height: 100px; border-radius: 50%; background-color: #FFB300; color: #121212;
+        display: flex; justify-content: center; align-items: center; font-size: 2.5em; font-weight: bold;
+        border: 3px solid #1E1E1E; box-shadow: 0 4px 8px rgba(0,0,0,0.3); overflow: hidden;
+    }
+    .profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    
+    .edit-icon-button {
+        background-color: #2C2C2C;
+        border: 1px solid #444;
+        border-radius: 6px; /* Bordes suaves */
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        flex-shrink: 0; /* Evita que el botón se encoja */
+    }
+    .edit-icon-button:hover {
+        background-color: #444;
+    }
+    .edit-icon-button svg {
+        width: 16px;
+        height: 16px;
+        fill: #E0E0E0; /* Color del ícono */
+    }
+    .bot-card li { 
+        padding: 8px 0; border-bottom: 1px solid #2C2C2C; 
+        display: flex; justify-content: space-between; align-items: center; 
+    }
+    .bot-card .item-name { font-weight: 500; color: #E0E0E0; }
+    .bot-card .item-detail { color: #A0A0A0; font-size: 0.9em; text-align: right; }
+    /* --- FIN: NUEVOS ESTILOS PARA PERFIL DE CLIENTE --- */
+
     /* --- FIN: NUEVOS ESTILOS DARK MODE --- */
 </style>
 </head>
@@ -203,7 +242,7 @@
             </div>
             <div class="header-icons">
                 <div class="icon-wrapper" id="messagesIconWrapper" title="Ver mensajes">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 10H6v-2h12v2zm0-4H6V6h12v2z"></path></svg>
+                    <svg xmlns="http://www.w.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 10H6v-2h12v2zm0-4H6V6h12v2z"></path></svg>
                     <span class="notification-badge" id="notificationBadge"></span>
                 </div>
             </div>
@@ -217,6 +256,8 @@
             <button class="send-button" id="sendButton">➤</button>
         </div>
     </div>
+
+    <input type="file" id="clientPicInput" accept="image/png, image/jpeg" style="display: none;">
 
     <script>
         const SUPABASE_URL = 'https://olkjevlkqdafbhuiszfz.supabase.co';
@@ -246,7 +287,10 @@
                 this.chatHeader = document.getElementById('chatHeader');
                 this.notificationBadge = document.getElementById('notificationBadge');
                 this.messagesIconWrapper = document.getElementById('messagesIconWrapper');
-                this.menuButton = document.getElementById('menuButton'); // Añadido
+                this.menuButton = document.getElementById('menuButton'); 
+                
+                // --- NUEVO ---
+                this.clientPicInput = null; 
 
                 this.mainMenuButton = `<div class="command-buttons-container" style="margin-top: 15px;"><button class="command-button" data-command="menu">↩️ Volver al Menú</button></div>`;
 
@@ -264,8 +308,11 @@
                     }
                 });
                 
-                // Añadido
                 this.menuButton.addEventListener('click', () => this.handleMenuButton());
+                
+                // --- NUEVO ---
+                this.clientPicInput = document.getElementById('clientPicInput');
+                this.clientPicInput.addEventListener('change', (event) => this.uploadClientPicture(event));
 
                 await this.checkConnection();
             }
@@ -327,7 +374,7 @@
             }
 
             async handleButtonClick(event) {
-                const button = event.target.closest('.command-button');
+                const button = event.target.closest('.command-button, .edit-icon-button'); // --- MODIFICADO ---
                 if (!button || button.disabled) return;
                 
                 const container = button.closest('.command-buttons-container');
@@ -340,7 +387,15 @@
                 }
                 
                 const command = button.dataset.command;
-                
+
+                // --- NUEVA LÓGICA ---
+                // Si el botón es el de editar nombre, no mostramos el mensaje del usuario
+                if(command === '/editar_client_name') {
+                    await this.processUserInput(command);
+                    return;
+                }
+                // --- FIN ---
+
                 this.addUserMessage(button.textContent.trim());
                 await this.processUserInput(command);
             }
@@ -418,6 +473,7 @@
                             this.showClientMainMenu();
                          }
                         return;
+                    // --- FLUJO DE PERFIL MODIFICADO ---
                     case 'editing_profile_firstname':
                         this.profileUpdateData.firstName = input;
                         this.addBotMessage(`<div class="bot-card"><p>¡Entendido, ${input}!</p><p>Ahora, por favor, dime tu apellido.</p>${this.mainMenuButton}</div>`);
@@ -427,6 +483,7 @@
                         this.profileUpdateData.lastName = input;
                         await this.updateClientProfile();
                         return;
+                    // --- FIN ---
                 }
                 
                 if (input.startsWith('reservar_servicio:')) {
@@ -445,6 +502,12 @@
                     case '/hablar': await this.enterLiveChatMode(); break;
                     case '/miperfil': await this.startProfileEditFlow(); break;
                     case '/pagar_qr': await this.startQRScanner(); break;
+                    // --- NUEVO COMANDO INTERNO ---
+                    case '/editar_client_name':
+                        this.addBotMessage(`<div class="bot-card"><p>Tu nombre actual es <strong>${this.clientProfile.first_name}</strong>.</p><p>Por favor, escribe tu nuevo nombre.</p>${this.mainMenuButton}</div>`);
+                        this.currentFlow = 'editing_profile_firstname';
+                        break;
+                    // --- FIN ---
                     case 'menu': this.showClientMainMenu(); break;
                     default:
                         this.addBotMessage(`<div class="bot-card"><p>Actualmente, no puedo responder de manera natural. Sin embargo, puedes explorar utilizando los botones del menú. 😀</p></div>`);
@@ -571,20 +634,86 @@
             
             // ===== FIN DE LAS NUEVAS FUNCIONES =====
             
+            // --- FUNCIÓN MODIFICADA ---
             async startProfileEditFlow() {
-                const currentName = `${this.clientProfile.first_name} ${this.clientProfile.last_name}`;
-                this.addBotMessage(`<div class="bot-card"><h3>📝 Editar Perfil</h3><p>Tu nombre actual es <strong>${currentName}</strong>.</p><p>Por favor, escribe tu nombre.</p>${this.mainMenuButton}</div>`);
-                this.currentFlow = 'editing_profile_firstname';
+                this.showTyping();
+                
+                // Asegurarnos de que tenemos los datos más frescos
+                const { data: profile, error } = await supabase
+                    .from('clients')
+                    .select('*')
+                    .eq('id', this.clientProfile.id)
+                    .single();
+                
+                this.hideTyping();
+                
+                if(error) {
+                    this.addBotMessage('<div class="bot-card"><p>❌ No pude cargar tu perfil. Intenta de nuevo.</p></div>');
+                    return;
+                }
+                
+                this.clientProfile = profile; // Actualizamos el perfil local
+                
+                let avatarHTML = '';
+                if (profile.avatar_url) {
+                    avatarHTML = `<div class="profile-avatar"><img src="${profile.avatar_url}" alt="Foto de Perfil"></div>`;
+                } else {
+                    const initial = profile.first_name ? profile.first_name.charAt(0).toUpperCase() : 'C';
+                    avatarHTML = `<div class="profile-avatar"><span>${initial}</span></div>`;
+                }
+
+                let photoButtonsHTML = '';
+                if (profile.avatar_url) {
+                    photoButtonsHTML = `
+                        <button class="command-button" onclick="app.triggerClientFileUpload()">✏️ Editar Foto</button>
+                        <button class="command-button cancel" onclick="app.deleteClientPicture()">🗑️ Eliminar Foto</button>
+                    `;
+                } else {
+                    photoButtonsHTML = `
+                        <button class="command-button full-width confirm" onclick="app.triggerClientFileUpload()">📸 Subir Foto de Perfil</button>
+                    `;
+                }
+
+                const profileHTML = `
+                <div class="bot-card">
+                    <h3>👤 Mi Perfil</h3>
+                    <div class="profile-avatar-wrapper">${avatarHTML}</div>
+            
+                    <div class="command-buttons-container" style="margin-bottom: 15px; grid-template-columns: 1fr 1fr;">
+                        ${photoButtonsHTML}
+                    </div>
+            
+                    <ul>
+                        <li style="display: flex; align-items: center;">
+                            <span class="item-name">Nombre:</span>
+                            <span class="item-detail" style="margin-left: 1rem; text-align: left;">${profile.first_name} ${profile.last_name}</span>
+                            <button class="edit-icon-button" data-command="/editar_client_name" style="margin-left: auto;" title="Editar nombre">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"></path></svg>
+                            </button>
+                        </li>
+                        <li><span class="item-name">Teléfono:</span><span class="item-detail">${profile.phone_number}</span></li>
+                    </ul>
+            
+                    <div class="command-buttons-container" style="margin-top: 10px;">
+                        <button class="command-button full-width" data-command="menu">↩️ Volver al Menú</button>
+                    </div>
+                </div>`;
+                
+                this.addBotMessage(profileHTML);
+                this.currentFlow = 'profile_menu'; // Cambiamos el flow
             }
 
+            // --- FUNCIÓN MODIFICADA ---
             async updateClientProfile() {
                 this.showTyping();
                 const { firstName, lastName } = this.profileUpdateData;
 
-                const { error } = await supabase
+                const { data: updatedClient, error } = await supabase
                     .from('clients')
                     .update({ first_name: firstName, last_name: lastName })
-                    .eq('id', this.clientProfile.id);
+                    .eq('id', this.clientProfile.id)
+                    .select() // --- Añadido para obtener los datos actualizados
+                    .single(); // ---
 
                 this.hideTyping();
 
@@ -592,14 +721,143 @@
                     console.error("Error updating profile:", error);
                     this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error al actualizar tu perfil.</p>${this.mainMenuButton}</div>`);
                 } else {
-                    this.clientProfile.first_name = firstName;
-                    this.clientProfile.last_name = lastName;
+                    this.clientProfile = updatedClient; // --- Actualizamos el perfil local
                     this.addBotMessage(`<div class="bot-card"><p>✅ ¡Perfecto, ${firstName}! Tu perfil ha sido actualizado.</p></div>`);
                 }
 
                 this.profileUpdateData = {};
-                setTimeout(() => this.showClientMainMenu(), 1000);
+                this.currentFlow = 'authenticated'; // Reseteamos el flow
+                setTimeout(() => this.startProfileEditFlow(), 1000); // Volvemos al menú de perfil
             }
+            
+            // --- NUEVAS FUNCIONES PARA FOTO DE PERFIL (ADAPTADAS DE index.html) ---
+            
+            triggerClientFileUpload() {
+                this.clientPicInput.click();
+            }
+            
+            async uploadClientPicture(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const fileTypes = ['image/png', 'image/jpeg'];
+                if (!fileTypes.includes(file.type)) {
+                    this.addBotMessage(`<div class="bot-card" style="border-color: #F44336;"><p>❌ <strong>Formato no válido.</strong><br>Por favor, sube una imagen PNG o JPG.</p></div>`);
+                    return;
+                }
+                if (file.size > 2 * 1024 * 1024) { // Límite de 2MB
+                    this.addBotMessage(`<div class="bot-card" style="border-color: #F44336;"><p>❌ <strong>Imagen muy grande.</strong><br>El límite es de 2 MB.</p></div>`);
+                    return;
+                }
+                
+                this.addBotMessage('<div class="bot-card"><p>Subiendo foto, por favor espera... ⏳</p></div>');
+                this.showTyping();
+                
+                const bucketName = 'client_pictures'; // El bucket que creamos
+                // Usamos el ID del cliente para la ruta, asegurando que sea único
+                const filePath = `${this.clientProfile.id}/profile.png`; 
+
+                try {
+                    // Subimos la imagen
+                    const { error: uploadError } = await supabase.storage
+                        .from(bucketName)
+                        .upload(filePath, file, {
+                            cacheControl: '3600',
+                            upsert: true, // Sobrescribe la imagen si ya existe
+                        });
+
+                    if (uploadError) {
+                        console.error("Error en Subida (Storage):", uploadError);
+                        throw new Error(`Error de Storage: ${uploadError.message}`);
+                    }
+
+                    // Obtenemos la URL pública
+                    const { data: urlData } = supabase.storage
+                        .from(bucketName)
+                        .getPublicUrl(filePath);
+                        
+                    // Añadimos un timestamp para evitar problemas de caché
+                    const publicURLWithCacheBuster = `${urlData.publicUrl}?t=${new Date().getTime()}`;
+
+                    // Actualizamos la tabla 'clients' con la nueva URL
+                    const { data: updatedProfile, error: dbError } = await supabase
+                        .from('clients')
+                        .update({ avatar_url: publicURLWithCacheBuster })
+                        .eq('id', this.clientProfile.id)
+                        .select()
+                        .single();
+
+                    if (dbError) {
+                        console.error("Error en Actualización (DB):", dbError);
+                        throw new Error(`Error de Base de Datos: ${dbError.message}`);
+                    }
+
+                    this.clientProfile = updatedProfile; // Actualizamos el perfil local
+                    this.addBotMessage('<div class="bot-card"><p>✅ ¡Foto de perfil actualizada con éxito!</p></div>');
+                    
+                } catch (error) {
+                    console.error("Error subiendo la foto:", error);
+                    this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd; color: #D8000C;">
+                        <p><strong>❌ Hubo un error al subir tu foto:</strong><br><small>${error.message}</small></p>
+                        <p class="helper-text">Por favor, inténtalo de nuevo. Si el error persiste, contacta al barbero.</p>
+                    </div>`);
+                } finally {
+                    this.hideTyping();
+                    this.clientPicInput.value = ''; // Reseteamos el input
+                    await this.startProfileEditFlow(); // Mostramos el perfil actualizado
+                }
+            }
+            
+            async deleteClientPicture() {
+                // Usamos un confirm nativo por simplicidad
+                if (!confirm("¿Estás seguro de que quieres eliminar tu foto de perfil?")) return;
+
+                this.addBotMessage('<div class="bot-card"><p>Eliminando foto...</p></div>');
+                this.showTyping();
+                
+                const bucketName = 'client_pictures';
+                const filePath = `${this.clientProfile.id}/profile.png`;
+
+                try {
+                    // 1. Borrar de Storage
+                    const { error: removeError } = await supabase.storage
+                        .from(bucketName)
+                        .remove([filePath]);
+                    
+                    // Ignoramos el error si el archivo no existía, pero logueamos otros errores
+                    if (removeError && removeError.message !== 'The resource was not found') {
+                         console.error("Error borrando de Storage:", removeError);
+                         throw new Error(`Error de Storage: ${removeError.message}`);
+                    }
+
+                    // 2. Borrar de la Base de Datos (poner en null)
+                    const { data: updatedProfile, error: dbError } = await supabase
+                        .from('clients')
+                        .update({ avatar_url: null })
+                        .eq('id', this.clientProfile.id)
+                        .select()
+                        .single();
+
+                    if (dbError) {
+                        console.error("Error actualizando DB:", dbError);
+                        throw new Error(`Error de Base de Datos: ${dbError.message}`);
+                    }
+
+                    this.clientProfile = updatedProfile; // Actualizamos localmente
+                    this.addBotMessage('<div class="bot-card"><p>✅ Foto eliminada correctamente.</p></div>');
+
+                } catch (error) {
+                    console.error("Error eliminando la foto:", error);
+                    this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd; color: #D8000C;">
+                        <p><strong>❌ Hubo un error al eliminar tu foto:</strong><br><small>${error.message}</small></p>
+                    </div>`);
+                } finally {
+                    this.hideTyping();
+                    await this.startProfileEditFlow(); // Mostramos el perfil actualizado
+                }
+            }
+
+            // --- FIN DE NUEVAS FUNCIONES DE FOTO DE PERFIL ---
 
             parseDateInput(input) {
                 const now = new Date();
@@ -730,7 +988,8 @@
                 if (storedCode && clientId) {
                     this.showTyping();
                     const { data: barber, error: barberError } = await supabase.from('barbers').select('*').eq('public_code', storedCode).single();
-                    const { data: client, error: clientError } = await supabase.from('clients').select('*').eq('id', clientId).single();
+                    // --- MODIFICADO ---: Pedimos el avatar_url
+                    const { data: client, error: clientError } = await supabase.from('clients').select('*, avatar_url').eq('id', clientId).single();
                     this.hideTyping();
                     
                     if (barber && client) {
@@ -783,7 +1042,7 @@
                 
                 const { data: existingClient, error: findError } = await supabase
                     .from('clients')
-                    .select('*')
+                    .select('*, avatar_url') // --- MODIFICADO ---
                     .eq('linked_barber_id', this.barberData.id)
                     .eq('phone_number', phone)
                     .single(); 
@@ -813,7 +1072,7 @@
                             linked_barber_id: this.barberData.id,
                             phone_number: phone 
                         })
-                        .select()
+                        .select('*, avatar_url') // --- MODIFICADO ---
                         .single();
                     
                     this.hideTyping();
@@ -896,7 +1155,7 @@
                 <button class="command-button" data-command="/reservar">📅 Hacer una Reserva</button>
                 <button class="command-button" data-command="/servicios">🛠️ Ver Servicios</button>
                 <button class="command-button" data-command="/horario">⏰ Ver Horario</button>
-                <button class="command-button" data-command="/miperfil">👤 Editar Perfil</button>
+                <button class="command-button" data-command="/miperfil">👤 Mi Perfil</button>
                 <button class="command-button" data-command="/hablar">💬 Hablar con el Barbero</button>
                 <button class="command-button full-width" style="background-color: #4CAF50; color: white;" data-command="/pagar_qr">📲 Pagar con QR</button>
                 </div></div>`;
