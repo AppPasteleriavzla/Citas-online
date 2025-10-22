@@ -73,7 +73,14 @@
     .typing span:nth-child(2) { animation-delay: 0.4s; }
     .typing span:nth-child(3) { animation-delay: 0.6s; }
 
-    .input-container { display: flex; padding: 12px; background: #1E1E1E; border-top: 1px solid #2C2C2C; gap: 8px; }
+    .input-container { 
+        display: flex; 
+        padding: 12px; 
+        background: #1E1E1E; 
+        border-top: 1px solid #2C2C2C; 
+        gap: 8px; 
+        align-items: center; /* Alinear verticalmente */
+    }
     .message-input { 
         flex: 1; 
         padding: 10px 14px; 
@@ -157,6 +164,33 @@
         border: 2px solid rgba(255, 255, 255, 0.5); box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     }
     .barber-profile-pic { width: 100%; height: 100%; object-fit: cover; }
+    
+    /* --- INICIO: Estilos para el nuevo Botón de Menú --- */
+    .menu-button {
+        display: none; /* Oculto por defecto */
+        flex-shrink: 0;
+        padding: 8px;
+        background: #2C2C2C;
+        border: 1px solid #444;
+        border-radius: 50%; /* Redondo */
+        cursor: pointer;
+        width: 38px; /* Tamaño consistente */
+        height: 38px;
+        transition: background-color 0.2s;
+    }
+    .menu-button.visible {
+        display: block; /* Mostrarlo en modo chat */
+    }
+    .menu-button:hover {
+        background-color: #444;
+    }
+    .menu-button svg {
+        width: 100%;
+        height: 100%;
+        fill: #E0E0E0;
+    }
+    /* --- FIN: Estilos para el nuevo Botón de Menú --- */
+
     /* --- FIN: NUEVOS ESTILOS DARK MODE --- */
 </style>
 </head>
@@ -176,6 +210,9 @@
         </div>
         <div class="messages-container" id="messagesContainer"></div>
         <div class="input-container">
+            <button class="menu-button" id="menuButton" title="Volver al Menú">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M4 18h16v-2H4v2zm0-5h16v-2H4v2zm0-7v2h16V6H4z"></path></svg>
+            </button>
             <input type="text" class="message-input" id="messageInput" placeholder="Escribe un mensaje...">
             <button class="send-button" id="sendButton">➤</button>
         </div>
@@ -209,6 +246,7 @@
                 this.chatHeader = document.getElementById('chatHeader');
                 this.notificationBadge = document.getElementById('notificationBadge');
                 this.messagesIconWrapper = document.getElementById('messagesIconWrapper');
+                this.menuButton = document.getElementById('menuButton'); // Añadido
 
                 this.mainMenuButton = `<div class="command-buttons-container" style="margin-top: 15px;"><button class="command-button" data-command="menu">↩️ Volver al Menú</button></div>`;
 
@@ -225,8 +263,34 @@
                         this.enterLiveChatMode();
                     }
                 });
+                
+                // Añadido
+                this.menuButton.addEventListener('click', () => this.handleMenuButton());
 
                 await this.checkConnection();
+            }
+            
+            // --- NUEVA FUNCIÓN ---
+            handleMenuButton() {
+                if (this.currentFlow !== 'live_chat') return; 
+
+                // 1. Desuscribirse del chat en vivo
+                if (this.chatSubscription) {
+                    this.chatSubscription.unsubscribe();
+                    this.chatSubscription = null;
+                }
+                
+                // 2. Limpiar la pantalla de chat
+                this.messagesContainer.innerHTML = '';
+                
+                // 3. Ocultar el botón de menú
+                this.menuButton.classList.remove('visible');
+                
+                // 4. Mostrar el menú principal (esto resetea el flow)
+                this.showClientMainMenu();
+                
+                // 5. Reactivar las notificaciones de ícono
+                this.subscribeToNotifications();
             }
 
             updateNotificationBadge() {
@@ -300,16 +364,11 @@
                     this.qrScanner = null;
                 }
                 
+               // Modificado: El modo chat en vivo ahora se maneja con el botón
                if (this.currentFlow === 'live_chat') {
+                    // Si el usuario escribe "menu" manualmente, también funciona
                     if (input === 'menu') { 
-                        this.addUserMessage("Volver al menú");
-                        if (this.chatSubscription) {
-                            this.chatSubscription.unsubscribe();
-                            this.chatSubscription = null;
-                        }
-                        this.messagesContainer.innerHTML = '';
-                        this.showClientMainMenu();
-                        this.subscribeToNotifications();
+                        this.handleMenuButton();
                     }
                     return;
                 }
@@ -332,18 +391,17 @@
                     return;
                 }
 
-                // --- INICIO DE LA MODIFICACIÓN DEL FLUJO ---
+                // --- FLUJO DE AUTENTICACIÓN MEJORADO ---
                 if (this.currentFlow === 'awaiting_code') {
                     await this.handleCodeEntry(input);
-                    return; // Importante retornar
+                    return; 
                 }
 
                 if (this.currentFlow === 'awaiting_phone') {
-                    // Aquí puedes añadir validación de formato de teléfono si lo deseas
                     await this.findOrCreateClientByPhone(input);
-                    return; // Importante retornar
+                    return; 
                 }
-                // --- FIN DE LA MODIFICACIÓN DEL FLUJO ---
+                // --- FIN DEL FLUJO DE AUTENTICACIÓN ---
 
                 switch (this.currentFlow) {
                     case 'booking_date':
@@ -665,7 +723,6 @@
                 setTimeout(() => this.showClientMainMenu(), 1500);
             }
 
-            // --- FUNCIÓN MODIFICADA ---
             async checkConnection() {
                 const storedCode = localStorage.getItem('barber_code');
                 const clientId = localStorage.getItem('client_id');
@@ -685,23 +742,20 @@
                         this.showClientMainMenu();
                         this.subscribeToNotifications();
                     } else {
-                        // Si falta el barbero o el cliente, borramos todo y empezamos de cero
                         localStorage.clear();
                         this.promptForCode();
                     }
                 } else {
-                    // No hay nada en localStorage, empezamos de cero
                     this.promptForCode();
                 }
             }
 
-            // --- FUNCIÓN MODIFICADA ---
             promptForCode() {
                 this.addBotMessage(`<div class="bot-card"><h3>¡Bienvenido!</h3><p>Por favor, introduce el código único de tu barbero para conectar.</p></div>`);
                 this.currentFlow = 'awaiting_code';
+                this.messageInput.placeholder = "Escribe el código del barbero...";
             }
 
-            // --- FUNCIÓN MODIFICADA ---
             async handleCodeEntry(code) {
                 this.showTyping();
                 const { data, error } = await supabase.from('barbers').select('*').eq('public_code', code.toUpperCase()).single();
@@ -711,34 +765,28 @@
                     this.barberData = data;
                     localStorage.setItem('barber_code', this.barberData.public_code);
                     
-                    // Ahora que validamos al barbero, pedimos el teléfono
                     this.updateHeader();
                     this.addBotMessage(`<div class="bot-card">
                         <p>✅ ¡Conexión exitosa con <strong>${this.barberData.barber_shop_name}</strong>!</p>
                         <p>Para recuperar tu historial o crear tu perfil, por favor, introduce tu <strong>número de teléfono</strong> (Ej: 04121234567).</p>
                     </div>`);
                     
-                    this.currentFlow = 'awaiting_phone'; // Cambiamos al nuevo flujo
+                    this.currentFlow = 'awaiting_phone'; 
+                    this.messageInput.placeholder = "Escribe tu número de teléfono...";
                 } else {
                     this.addBotMessage(`<div class="bot-card"><p>❌ Código no válido. Por favor, inténtalo de nuevo.</p></div>`);
                 }
             }
 
-            // --- FUNCIÓN ELIMINADA ---
-            // ya no creamos un cliente "anónimo", lo creamos con teléfono
-            // async getOrCreateAnonymousClient() { ... }
-
-            // --- NUEVA FUNCIÓN ---
             async findOrCreateClientByPhone(phone) {
                 this.showTyping();
                 
-                // 1. Buscar cliente existente con ese teléfono Y para ese barbero
                 const { data: existingClient, error: findError } = await supabase
                     .from('clients')
                     .select('*')
                     .eq('linked_barber_id', this.barberData.id)
                     .eq('phone_number', phone)
-                    .single(); // .single() buscará uno o ninguno
+                    .single(); 
 
                 if (existingClient) {
                     // --- CLIENTE ENCONTRADO ---
@@ -756,7 +804,6 @@
 
                 } else {
                     // --- CLIENTE NUEVO ---
-                    // (findError es esperado si .single() no encuentra nada)
                     const anonymousName = `Anónimo-${Math.random().toString(36).substring(2, 8)}`;
                     const { data: newClient, error: createError } = await supabase
                         .from('clients')
@@ -764,7 +811,7 @@
                             first_name: 'Cliente', 
                             last_name: anonymousName, 
                             linked_barber_id: this.barberData.id,
-                            phone_number: phone // Guardamos el teléfono
+                            phone_number: phone 
                         })
                         .select()
                         .single();
@@ -774,7 +821,6 @@
                     if (createError) {
                         console.error("Error creating client:", createError);
                         this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error al crear tu perfil. Es posible que ese teléfono ya esté en uso. <br><small>${createError.message}</small></p></div>`);
-                        // Volvemos a pedir el código para reiniciar
                         this.promptForCode();
                         return;
                     }
@@ -787,11 +833,10 @@
 
                     this.addBotMessage(`<div class="bot-card"><p>¡Perfecto! Hemos creado tu perfil con el número ${phone}.</p></div>`);
                     
-                    // Bonus: Pedir el nombre ya que es nuevo
                     await new Promise(resolve => setTimeout(resolve, 1000));
                     this.addBotMessage(`<div class="bot-card"><h3>📝 Completa tu Perfil</h3><p>Para una mejor atención, ¿cuál es tu <strong>nombre</strong>?</p>${this.mainMenuButton}</div>`);
                     this.currentFlow = 'editing_profile_firstname';
-                    // No llamamos a showClientMainMenu()
+                    this.messageInput.placeholder = "Escribe tu nombre...";
                 }
             }
 
@@ -806,10 +851,8 @@
                 }
             }
 
-            // --- FUNCIÓN DE JAVASCRIPT MODIFICADA ---
             updateHeader() {
                 let avatarHTML = '';
-                // [CAMBIO] Usamos this.barberData para el header, pero solo si existe
                 const shopName = this.barberData ? this.barberData.barber_shop_name : "BarberConnect";
                 const avatarUrl = this.barberData ? this.barberData.avatar_url : null;
                 const subTitle = this.barberData ? "Asistente de Citas" : "Portal del Cliente";
@@ -846,7 +889,8 @@
                     if (this.unreadCount > 0) this.enterLiveChatMode();
                 });
             }
-
+            
+            // --- FUNCIÓN MODIFICADA ---
             showClientMainMenu() {
                 const menuHTML = `<div class="bot-card"><h3>Menú Principal</h3><p>¿Cómo puedo ayudarte hoy?</p><div class="command-buttons-container">
                 <button class="command-button" data-command="/reservar">📅 Hacer una Reserva</button>
@@ -858,6 +902,8 @@
                 </div></div>`;
                 this.addBotMessage(menuHTML);
                 this.currentFlow = 'main_menu';
+                // Resetear placeholder
+                this.messageInput.placeholder = "Usa los botones o escribe 'menu'";
             }
 
             async showServicesForBooking() {
@@ -922,6 +968,7 @@
                 }
             }
             
+            // --- FUNCIÓN MODIFICADA ---
             async enterLiveChatMode() {
                 if (this.notificationSubscription) {
                     this.notificationSubscription.unsubscribe();
@@ -930,7 +977,16 @@
 
                 this.currentFlow = 'live_chat';
                 this.messagesContainer.innerHTML = '';
-                this.addBotMessage('<div class="bot-card"><p>Ahora estás chateando directamente con tu barbero. Escribe <strong>menu</strong> (o usa el botón de volver) para regresar al menú principal.</p></div>');
+                
+                // --- CAMBIOS ---
+                // 1. Mostrar el botón de menú
+                this.menuButton.classList.add('visible');
+                // 2. Cambiar el placeholder
+                this.messageInput.placeholder = "Escribe un mensaje al barbero...";
+                // 3. Quitar la instrucción de texto
+                this.addBotMessage('<div class="bot-card"><p>Ahora estás chateando directamente con tu barbero.</p></div>'); 
+                // --- FIN DE CAMBIOS ---
+
                 this.resetUnreadCount();
 
                 const { data: messages, error } = await supabase.from('messages').select('*').eq('chat_id', this.chatId).order('created_at');
