@@ -271,6 +271,30 @@
         fill: #E0E0E0; /* Color del ícono */
     }
     /* --- FIN DE LA CORRECCIÓN VISUAL --- */
+
+    /* --- INICIO: NUEVOS ESTILOS PARA HEADER DE CHAT DE CLIENTE --- */
+    .chat-header-avatar {
+        width: 40px; 
+        height: 40px; 
+        border-radius: 50%; 
+        overflow: hidden; 
+        flex-shrink: 0;
+        background-color: #FFB300; /* Color de fallback */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        color: #121212;
+        font-size: 1.2em;
+        margin-left: 25px; /* Espacio para el botón de 'atrás' */
+    }
+    .chat-header-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    /* --- FIN: NUEVOS ESTILOS PARA HEADER DE CHAT DE CLIENTE --- */
+    
     /* --- FIN: NUEVOS ESTILOS DARK MODE --- */
 </style>
 </head>
@@ -330,7 +354,10 @@
             this.currentUser = null;
             this.barberProfile = null;
             this.activeView = 'bot';
-            this.activeChat = { id: null, clientName: null, clientId: null };
+            // --- INICIO: MODIFICACIÓN ---
+            // Añadido 'clientAvatar' para guardar la foto del cliente activo
+            this.activeChat = { id: null, clientName: null, clientId: null, clientAvatar: null };
+            // --- FIN: MODIFICACIÓN ---
             
             this.unreadCounts = {};
             this.newBookingsData = [];
@@ -358,6 +385,12 @@
             
             this.bookingsIconWrapper = document.getElementById('bookingsIconWrapper');
             this.financeIconWrapper = document.getElementById('financeIconWrapper');
+            
+            // --- INICIO: MODIFICACIÓN ---
+            // Guardamos el contenedor y el HTML original de la cabecera
+            this.headerTitleContainer = document.getElementById('header-title');
+            this.originalHeaderTitleHTML = this.headerTitleContainer.innerHTML;
+            // --- FIN: MODIFICACIÓN ---
 
             this.init();
         }
@@ -517,18 +550,54 @@ async getClientNameById(clientId) {
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
             document.getElementById(viewName).classList.add('active');
             this.activeView = viewName.replace('View', '');
-            const headerTitleDiv = document.getElementById('header-title');
+
+            // --- INICIO: MODIFICACIÓN ---
+            // Lógica para cambiar dinámicamente el header
             if (this.activeView === 'bot' || this.activeView === 'clientChats') {
-                headerTitleDiv.style.display = 'block';
-                this.headerSubtitle.textContent = this.activeView === 'bot' ? 'Asistente Virtual' : 'Mis Chats';
+                // Restaurar el header original
+                this.headerTitleContainer.innerHTML = this.originalHeaderTitleHTML;
+                this.headerTitleContainer.style.display = 'block'; // Restaurar display original
+                
+                // Re-seleccionar el subtítulo porque el innerHTML lo eliminó
+                this.headerSubtitle = document.getElementById('headerSubtitle');
+                if (this.headerSubtitle) {
+                    this.headerSubtitle.textContent = this.activeView === 'bot' ? 'Asistente Virtual' : 'Mis Chats';
+                }
+                
                 this.backButton.style.display = 'none';
                 this.activeChat.id = null;
+                this.activeChat.clientAvatar = null; // Limpiar avatar
                 if (this.chatSubscription) { this.chatSubscription.unsubscribe(); this.chatSubscription = null; }
-            } else {
-                headerTitleDiv.style.display = 'block';
-                this.headerSubtitle.textContent = `Hablando con ${this.activeChat.clientName}`;
+            
+            } else if (this.activeView === 'singleChat') {
+                // Construir el header de chat (estilo WhatsApp)
+                let avatarHTML = '';
+                const clientName = this.activeChat.clientName;
+                const clientAvatar = this.activeChat.clientAvatar;
+                
+                if (clientAvatar) {
+                    avatarHTML = `<div class="chat-header-avatar"><img src="${clientAvatar}" alt="${clientName}"></div>`;
+                } else {
+                    const initial = clientName ? clientName.charAt(0).toUpperCase() : '?';
+                    avatarHTML = `<div class="chat-header-avatar"><span>${initial}</span></div>`;
+                }
+                
+                // Reemplazamos el contenido del header
+                this.headerTitleContainer.innerHTML = `
+                    ${avatarHTML}
+                    <div style="margin-left: 12px;">
+                        <h1 style="font-size: 1.2em; margin: 0; color: #FFFFFF;">${clientName}</h1>
+                        <p style="font-size: 0.8em; opacity: 0.9; margin: 0; color: #A0A0A0;">en línea</p> 
+                    </div>
+                `;
+                
+                // Hacemos que el contenedor sea flex
+                this.headerTitleContainer.style.display = 'flex';
+                this.headerTitleContainer.style.alignItems = 'center';
+
                 this.backButton.style.display = 'block';
             }
+            // --- FIN: MODIFICACIÓN ---
         }
         
         handleBack() {
@@ -1917,7 +1986,7 @@ async getClientNameById(clientId) {
                             avatarHTML = `<div class="avatar"><img src="${client.avatar_url}" alt="Avatar"></div>`;
                         } else {
                             const initials = (client.first_name ? client.first_name[0] : '') + (client.last_name ? client.last_name[0] : '');
-                            avatarHTML = `<div class="avatar">${initials.toLowerCase()}</div>`; // .toLowerCase() para que coincida con tu imagen
+                            avatarHTML = `<div class="avatar">${initials.toUpperCase()}</div>`; // Lo pongo en mayúsculas
                         }
 
                         // 3. MODIFICACIÓN: Usamos la nueva variable avatarHTML
@@ -1928,7 +1997,11 @@ async getClientNameById(clientId) {
                             </div>
                             <span class="unread-indicator ${unreadClass}" id="unread-${chat.id}"></span>`;
                         
-                        li.addEventListener('click', () => this.openClientChat(chat.id, `${client.first_name} ${client.last_name}`, client.id));
+                        // --- INICIO: MODIFICACIÓN ---
+                        // 4. Pasamos la client.avatar_url a la función openClientChat
+                        li.addEventListener('click', () => this.openClientChat(chat.id, `${client.first_name} ${client.last_name}`, client.id, client.avatar_url));
+                        // --- FIN: MODIFICACIÓN ---
+                        
                         this.clientChatsList.appendChild(li);
                     }
                 }); 
@@ -1936,15 +2009,23 @@ async getClientNameById(clientId) {
             this.switchView('clientChatsView'); 
         }
 
-       async openClientChat(chatId, clientName, clientId) { 
-            // --- CORRECCIÓN ---
+       // --- INICIO: MODIFICACIÓN ---
+       // 1. Añadido 'clientAvatarUrl' como parámetro
+       async openClientChat(chatId, clientName, clientId, clientAvatarUrl) { 
+       // --- FIN: MODIFICACIÓN ---
+
+            // --- CORRECCIÓN (ya estaba) ---
             // 1. Guardar los datos PRIMERO
             this.activeChat.id = chatId; 
             this.activeChat.clientName = clientName; 
             this.activeChat.clientId = clientId; 
+            // --- INICIO: MODIFICACIÓN ---
+            // 2. Guardar el avatar
+            this.activeChat.clientAvatar = clientAvatarUrl; 
+            // --- FIN: MODIFICACIÓN ---
             
-            // 2. Cambiar la vista DESPUÉS
-            this.switchView('singleChatView'); // Ahora sí leerá el nombre correcto
+            // 3. Cambiar la vista DESPUÉS
+            this.switchView('singleChatView'); // Ahora sí leerá el nombre y avatar correctos
             // --- FIN CORRECCIÓN ---
 
             this.singleChatMessages.innerHTML = ''; 
@@ -1954,27 +2035,27 @@ async getClientNameById(clientId) {
             if (chatIndicator) chatIndicator.classList.remove('visible'); 
             const { data: messages, error } = await supabase.from('messages').select('*').eq('chat_id', chatId).order('created_at'); 
             if (messages) { messages.forEach(msg => this.renderMessage(msg, this.singleChatMessages, false)); } 
-            this.singleChatMessages.scrollTop = this.singleChatMessages.scrollHeight; 
-            if (this.chatSubscription) this.chatSubscription.unsubscribe(); 
-            this.chatSubscription = supabase.channel(`barber-chat-${chatId}`)
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` }, payload => { 
-                    if (payload.new.sender_type === 'client') { 
-                        this.renderMessage(payload.new, this.singleChatMessages); 
-                    } 
-                }).subscribe(); 
+            this.singleChatMessages.scrollTop = this.singleChatMessages.scrollHeight;
+
+            if (this.chatSubscription) this.chatSubscription.unsubscribe();
+            this.chatSubscription = supabase.channel(`chat-room-${chatId}`)
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}`},
+                    payload => {
+                        if (payload.new.sender_type === 'client') this.renderMessage(payload.new);
+                    }
+                ).subscribe();
         }
-        
-        async sendClientMessage(text) { 
-            const payload = { chat_id: this.activeChat.id, sender_id: this.currentUser.id, sender_type: 'barber', content: text }; 
-            this.renderMessage(payload, this.singleChatMessages); 
-            await supabase.from('messages').insert(payload); 
+
+        async sendClientMessage(text) {
+            const payload = { chat_id: this.activeChat.id, sender_id: this.barberProfile.id, sender_type: 'barber', content: text };
+            this.renderMessage({ ...payload, sender: 'user' }, this.singleChatMessages);
+            await supabase.from('messages').insert(payload);
         }
     }
-    
+
     let app;
     document.addEventListener('DOMContentLoaded', () => {
         app = new ChatApp();
-        window.app = app; // Exponer la app globalmente para los clics en línea (onclick)
     });
 </script>
 </body>
