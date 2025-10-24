@@ -343,7 +343,6 @@
             this.notificationsSubscription = null;
             this.bookingsSubscription = null;
             this.transactionsSubscription = null;
-            this.typingTimeout = null; // <-- NUEVA PROPIEDAD
 
             this.messagesContainer = document.getElementById('messagesContainer');
             this.messageInput = document.getElementById('messageInput');
@@ -369,7 +368,6 @@
         async init() {
             this.sendButton.addEventListener('click', () => this.handleSend());
             this.messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') this.handleSend(); });
-            this.messageInput.addEventListener('input', () => this.handleTyping()); // <-- NUEVO EVENT LISTENER
             this.messagesContainer.addEventListener('click', this.handleButtonClick.bind(this));
             this.backButton.addEventListener('click', () => this.handleBack());
             this.chatsIconWrapper.addEventListener('click', () => this.showClientChats());
@@ -590,68 +588,13 @@ async getClientNameById(clientId) {
                 await this.setAvailability(dayToConfirm, hours);
             }
         }
-
-        // --- NUEVA FUNCIÓN PARA GESTIONAR "ESTÁ ESCRIBIENDO" ---
-        async handleTyping() {
-            // Solo nos interesa si estamos en un chat con un cliente
-            if (this.activeView !== 'singleChat' || !this.chatSubscription) {
-                return;
-            }
-
-            // Si ya hay un timeout, lo limpiamos
-            if (this.typingTimeout) {
-                clearTimeout(this.typingTimeout);
-            }
-
-            try {
-                // 1. Enviamos el evento "typing" al canal del chat
-                // Usamos broadcast() en lugar de insert()
-                this.chatSubscription.broadcast({
-                    event: 'typing',
-                    sender: 'barber'
-                });
-
-                // 2. Creamos un nuevo timeout. Si el barbero no escribe
-                //    en 2 segundos (2000ms), enviamos el evento "stopped-typing"
-                this.typingTimeout = setTimeout(() => {
-                    this.chatSubscription.broadcast({
-                        event: 'stopped-typing',
-                        sender: 'barber'
-                    });
-                    this.typingTimeout = null;
-                }, 2000);
-
-            } catch (error) {
-                console.error("Error al emitir evento 'typing':", error);
-            }
-        }
         
         async handleSend() {
             const text = this.messageInput.value.trim();
             if (!text || this.isTyping) return;
             this.messageInput.value = '';
-
-            // --- MODIFICACIÓN PARA "ESTÁ ESCRIBIENDO" ---
-            // Limpiamos el timeout y enviamos "stopped-typing"
-            if (this.typingTimeout) {
-                clearTimeout(this.typingTimeout);
-                this.typingTimeout = null;
-            }
-            if (this.activeView === 'singleChat' && this.chatSubscription) {
-                this.chatSubscription.broadcast({
-                    event: 'stopped-typing',
-                    sender: 'barber'
-                });
-            }
-            // --- FIN DE LA MODIFICACIÓN ---
-
-            if (this.activeView === 'bot') { 
-                this.addUserMessage(text); 
-                await this.processUserInput(text.toLowerCase(), text); 
-            }
-            else if (this.activeView === 'singleChat') { 
-                await this.sendClientMessage(text); 
-            }
+            if (this.activeView === 'bot') { this.addUserMessage(text); await this.processUserInput(text.toLowerCase(), text); }
+            else if (this.activeView === 'singleChat') { await this.sendClientMessage(text); }
         }
 
         addMessage(text, sender, container) { const message = { text, sender, time: new Date() }; this.renderMessage(message, container); }
