@@ -186,7 +186,15 @@
     #clientChatsView ul { list-style: none; padding: 10px 0; overflow-y: auto; }
     #clientChatsView li { display: flex; align-items: center; padding: 15px; border-bottom: 1px solid #2C2C2C; cursor: pointer; gap: 12px; }
     #clientChatsView li:hover { background: #1E1E1E; }
-    #clientChatsView .avatar { width: 45px; height: 45px; background: #FFB300; color: #121212; border-radius: 50%; display: grid; place-items: center; font-weight: bold; flex-shrink: 0; }
+    #clientChatsView .avatar { width: 45px; height: 45px; background: #FFB300; color: #121212; border-radius: 50%; display: grid; place-items: center; font-weight: bold; flex-shrink: 0;
+    overflow: hidden; }
+    
+    #clientChatsView .avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
     #clientChatsView .chat-info { flex: 1; }
     #clientChatsView .chat-name { font-weight: 500; }
     #clientChatsView .unread-indicator { width: 10px; height: 10px; background: #FFB300; border-radius: 50%; visibility: hidden; transition: visibility 0.2s; }
@@ -1886,10 +1894,14 @@ async getClientNameById(clientId) {
         }
 
         
-        async showClientChats() { 
-            const { data: chats, error } = await supabase.from('chats').select(`id, clients (id, first_name, last_name)`).eq('barber_id', this.barberProfile.id); 
+       async showClientChats() { 
+            // 1. MODIFICACIÓN: Pedimos también la 'avatar_url' del cliente
+            const { data: chats, error } = await supabase.from('chats').select(`id, clients (id, first_name, last_name, avatar_url)`).eq('barber_id', this.barberProfile.id); 
+            
             if (error) { console.error(error); return; } 
+            
             this.clientChatsList.innerHTML = ''; 
+            
             if (chats.length === 0) { 
                 this.clientChatsList.innerHTML = '<li>Aún no tienes ninguna conversación. Cuando un cliente te contacte, aparecerá aquí.</li>'; 
             } else { 
@@ -1898,13 +1910,24 @@ async getClientNameById(clientId) {
                     if (client) {
                         const li = document.createElement('li');
                         const unreadClass = (this.unreadCounts[chat.id] || 0) > 0 ? 'visible' : '';
-                        const initials = (client.first_name ? client.first_name[0] : '') + (client.last_name ? client.last_name[0] : '');
+
+                        // 2. MODIFICACIÓN: Lógica para decidir si mostrar imagen o iniciales
+                        let avatarHTML = '';
+                        if (client.avatar_url) {
+                            avatarHTML = `<div class="avatar"><img src="${client.avatar_url}" alt="Avatar"></div>`;
+                        } else {
+                            const initials = (client.first_name ? client.first_name[0] : '') + (client.last_name ? client.last_name[0] : '');
+                            avatarHTML = `<div class="avatar">${initials.toLowerCase()}</div>`; // .toLowerCase() para que coincida con tu imagen
+                        }
+
+                        // 3. MODIFICACIÓN: Usamos la nueva variable avatarHTML
                         li.innerHTML = `
-                            <div class="avatar">${initials}</div>
+                            ${avatarHTML}
                             <div class="chat-info">
                                 <div class="chat-name">${client.first_name} ${client.last_name}</div>
                             </div>
                             <span class="unread-indicator ${unreadClass}" id="unread-${chat.id}"></span>`;
+                        
                         li.addEventListener('click', () => this.openClientChat(chat.id, `${client.first_name} ${client.last_name}`, client.id));
                         this.clientChatsList.appendChild(li);
                     }
@@ -1913,11 +1936,17 @@ async getClientNameById(clientId) {
             this.switchView('clientChatsView'); 
         }
 
-        async openClientChat(chatId, clientName, clientId) { 
-            this.switchView('singleChatView'); 
+       async openClientChat(chatId, clientName, clientId) { 
+            // --- CORRECCIÓN ---
+            // 1. Guardar los datos PRIMERO
             this.activeChat.id = chatId; 
             this.activeChat.clientName = clientName; 
             this.activeChat.clientId = clientId; 
+            
+            // 2. Cambiar la vista DESPUÉS
+            this.switchView('singleChatView'); // Ahora sí leerá el nombre correcto
+            // --- FIN CORRECCIÓN ---
+
             this.singleChatMessages.innerHTML = ''; 
             this.unreadCounts[chatId] = 0; 
             this.updateBadges(); 
