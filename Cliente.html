@@ -67,11 +67,15 @@
     }
     .message-time { font-size: 0.7em; color: #A0A0A0; margin-top: 4px; padding: 0 8px; }
 
-    .typing { display: flex; padding: 10px 14px; background: #1E1E1E; border-radius: 18px; }
+    /* --- ESTILOS PARA INDICADOR DE ESCRITURA --- */
+    .typing { display: flex; padding: 10px 14px; background: #1E1E1E; border-radius: 18px; border-bottom-left-radius: 4px; }
     .typing span { height: 6px; width: 6px; background: #A0A0A0; border-radius: 50%; display: block; margin: 0 2px; animation: typing 1s infinite ease-in-out; }
     .typing span:nth-child(1) { animation-delay: 0.2s; }
     .typing span:nth-child(2) { animation-delay: 0.4s; }
     .typing span:nth-child(3) { animation-delay: 0.6s; }
+    @keyframes typing { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+    /* --- FIN ESTILOS INDICADOR --- */
+
 
     .input-container { 
         display: flex; 
@@ -105,7 +109,7 @@
     }
     .send-button:disabled { background: #555; color: #888; cursor: not-allowed; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes typing { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+    
 
     .bot-card { 
         background-color: #1E1E1E; 
@@ -241,7 +245,15 @@
                 </div>
             </div>
         </div>
-        <div class="messages-container" id="messagesContainer"></div>
+        <div class="messages-container" id="messagesContainer">
+             <div class="message bot" id="barber-typing-indicator" style="display: none;">
+                <div class="typing">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        </div>
         <div class="input-container">
             <button class="menu-button" id="menuButton" title="Volver al Menú">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M4 18h16v-2H4v2zm0-5h16v-2H4v2zm0-7v2h16V6H4z"></path></svg>
@@ -272,6 +284,7 @@
                 this.notificationSubscription = null;
                 this.qrScanner = null;
                 this.paymentDataToConfirm = null;
+                this.typingTimeout = null; // <-- NUEVA PROPIEDAD
                 
                 this.unreadCount = 0;
 
@@ -293,6 +306,7 @@
             async init() {
                 this.sendButton.addEventListener('click', () => this.handleSend());
                 this.messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') this.handleSend(); });
+                this.messageInput.addEventListener('input', () => this.handleTyping()); // <-- NUEVO EVENT LISTENER
                 this.messagesContainer.addEventListener('click', this.handleButtonClick.bind(this));
                 
                 this.messagesIconWrapper.addEventListener('click', () => {
@@ -401,10 +415,14 @@
                     this.chatSubscription = null;
                 }
                 
-                this.messagesContainer.innerHTML = '';
+                this.messagesContainer.innerHTML = ''; // Limpiar mensajes
+                 // Ocultar indicador de escritura si estaba visible
+                const typingIndicator = document.getElementById('barber-typing-indicator');
+                if (typingIndicator) typingIndicator.style.display = 'none';
+
                 this.menuButton.classList.remove('visible');
                 this.showClientMainMenu();
-                this.subscribeToNotifications();
+                this.subscribeToNotifications(); // Volver a suscribirse a notificaciones generales
             }
 
             updateNotificationBadge() {
@@ -448,20 +466,57 @@
                 if (container && !button.closest('.return-menu')) {
                    container.querySelectorAll('.command-button').forEach(btn => {
                        btn.disabled = true;
-                       btn.style.cursor = 'not-allowed';
-                       btn.style.backgroundColor = '#e9ecef';
+                       // No cambiamos el estilo aquí para que no se vea gris
+                       // btn.style.cursor = 'not-allowed';
+                       // btn.style.backgroundColor = '#e9ecef'; 
                    });
                 }
                 
                 const command = button.dataset.command;
                 
                 if(command === '/editar_client_name') {
+                    // Procesar directamente sin añadir mensaje de usuario
                     await this.processUserInput(command);
                     return;
                 }
 
+                // Añadir mensaje de usuario solo si no es un botón de edición silencioso
                 this.addUserMessage(button.textContent.trim());
                 await this.processUserInput(command);
+            }
+            
+            // --- NUEVA FUNCIÓN PARA GESTIONAR "ESTÁ ESCRIBIENDO" (CLIENTE) ---
+            async handleTyping() {
+                // Solo nos interesa si estamos en un chat en vivo
+                if (this.currentFlow !== 'live_chat' || !this.chatSubscription) {
+                    return;
+                }
+
+                // Si ya hay un timeout, lo limpiamos
+                if (this.typingTimeout) {
+                    clearTimeout(this.typingTimeout);
+                }
+
+                try {
+                    // Enviamos el evento "typing" al canal del chat
+                    this.chatSubscription.broadcast({
+                        event: 'typing',
+                        sender: 'client' // Identificamos que es el cliente
+                    });
+
+                    // Creamos un nuevo timeout. Si el cliente no escribe
+                    // en 2 segundos, enviamos "stopped-typing"
+                    this.typingTimeout = setTimeout(() => {
+                        this.chatSubscription.broadcast({
+                            event: 'stopped-typing',
+                            sender: 'client'
+                        });
+                        this.typingTimeout = null;
+                    }, 2000);
+
+                } catch (error) {
+                    console.error("Error al emitir evento 'typing' (cliente):", error);
+                }
             }
 
             async handleSend() {
@@ -469,6 +524,20 @@
                 if (!text || this.isTyping) return;
                 this.messageInput.value = '';
                 
+                // --- MODIFICACIÓN PARA "ESTÁ ESCRIBIENDO" ---
+                // Limpiamos el timeout y enviamos "stopped-typing"
+                if (this.typingTimeout) {
+                    clearTimeout(this.typingTimeout);
+                    this.typingTimeout = null;
+                }
+                if (this.currentFlow === 'live_chat' && this.chatSubscription) {
+                    this.chatSubscription.broadcast({
+                        event: 'stopped-typing',
+                        sender: 'client' // Identificamos que es el cliente
+                    });
+                }
+                // --- FIN DE LA MODIFICACIÓN ---
+
                 if (this.currentFlow === 'live_chat') {
                     this.sendRealtimeMessage(text);
                 } else {
@@ -478,29 +547,36 @@
             }
             
             async processUserInput(input) {
+                // Detener escáner QR si está activo
                 if (this.qrScanner) {
                     await this.qrScanner.stop().catch(e => console.log("Scanner already stopped."));
                     this.qrScanner = null;
                 }
                 
+               // Si estamos en chat en vivo, solo procesamos el comando 'menu'
                if (this.currentFlow === 'live_chat') {
                     if (input === 'menu') { 
                         this.handleMenuButton();
                     }
-                    return;
+                    // Ignorar cualquier otro input textual ya que se maneja en handleSend
+                    return; 
                 }
 
                 this.showTyping();
                 await new Promise(resolve => setTimeout(resolve, 600));
                 this.hideTyping();
 
+                // Comando universal 'menu'
                 if (input === 'menu') {
                     this.bookingData = {}; 
                     this.profileUpdateData = {};
+                    this.paymentDataToConfirm = null; // Cancelar pago pendiente
+                    this.currentFlow = 'main_menu'; // Asegurar el flujo correcto
                     this.showClientMainMenu();
                     return;
                 }
 
+                // --- Flujos específicos ---
                 if (input.startsWith('seleccionar_barbero:')) {
                     const barberName = input.split(':')[1];
                     this.bookingData.barberName = barberName;
@@ -517,7 +593,8 @@
                     await this.findOrCreateClientByPhone(input);
                     return; 
                 }
-
+                
+                // Procesar comandos según el flujo actual
                 switch (this.currentFlow) {
                     case 'booking_date':
                         await this.handleDateSelection(input);
@@ -528,31 +605,46 @@
                     case 'booking_confirmation':
                          if (input === 'confirmar_reserva') {
                             await this.confirmAndCreateBooking();
-                         } else {
+                         } else { // Asumimos 'cancelar_reserva' o cualquier otra cosa
                             this.addBotMessage(`<div class="bot-card"><p>Reserva cancelada.</p></div>`);
                             this.showClientMainMenu();
                          }
                         return;
                     case 'editing_profile_firstname':
-                        this.profileUpdateData.firstName = input;
-                        this.addBotMessage(`<div class="bot-card"><p>¡Entendido, ${input}!</p><p>Ahora, por favor, dime tu apellido.</p>${this.mainMenuButton}</div>`);
+                        this.profileUpdateData.firstName = this.capitalizeName(input); // Capitalizar nombre
+                        this.addBotMessage(`<div class="bot-card"><p>¡Entendido, ${this.profileUpdateData.firstName}!</p><p>Ahora, por favor, dime tu apellido.</p>${this.mainMenuButton}</div>`);
                         this.currentFlow = 'editing_profile_lastname';
                         return;
                     case 'editing_profile_lastname':
-                        this.profileUpdateData.lastName = input;
+                        this.profileUpdateData.lastName = this.capitalizeName(input); // Capitalizar apellido
                         await this.updateClientProfile();
                         return;
                 }
                 
+                // --- Procesamiento de comandos generales (cuando no está en un flujo específico) ---
                 if (input.startsWith('reservar_servicio:')) {
                     const serviceName = input.split(':')[1];
+                    // Asegurarse de que bookingData.barberName esté definido
+                    if (!this.bookingData.barberName) {
+                         this.addBotMessage(`<div class="bot-card"><p>⚠️ Hubo un error. Por favor, vuelve a iniciar la reserva.</p></div>`);
+                         this.showClientMainMenu();
+                         return;
+                    }
                     const barberServices = this.barberData.services[this.bookingData.barberName] || [];
                     this.bookingData.service = barberServices.find(s => s.name === serviceName);
+                    
+                    if (!this.bookingData.service) {
+                         this.addBotMessage(`<div class="bot-card"><p>⚠️ Servicio no encontrado. Por favor, selecciona uno de la lista.</p></div>`);
+                         await this.showServicesForBooking(); // Mostrar de nuevo los servicios
+                         return;
+                    }
+                    
                     this.addBotMessage(`<div class="bot-card"><p>Has seleccionado: <strong>${this.bookingData.service.name}</strong> ($${this.bookingData.service.price}).</p><p>Por favor, elige una fecha (p. ej., "hoy", "mañana" o "25/12"):</p>${this.mainMenuButton}</div>`);
                     this.currentFlow = 'booking_date';
                     return;
                 }
 
+                // Manejo de comandos principales cuando no está en otro flujo
                 switch (input) {
                     case '/servicios': await this.showServices(); break;
                     case '/horario': await this.showAvailability(); break;
@@ -561,14 +653,17 @@
                     case '/miperfil': await this.startProfileEditFlow(); break;
                     case '/pagar_qr': await this.startQRScanner(); break;
                     case '/suscribirse_notificaciones': await this.registerServiceWorker(); break; // Manejar el nuevo comando
-                    case '/editar_client_name':
+                    case '/editar_client_name': // Comando desde el botón de editar perfil
                         this.addBotMessage(`<div class="bot-card"><p>Tu nombre actual es <strong>${this.clientProfile.first_name}</strong>.</p><p>Por favor, escribe tu nuevo nombre.</p>${this.mainMenuButton}</div>`);
                         this.currentFlow = 'editing_profile_firstname';
                         break;
-                    case 'menu': this.showClientMainMenu(); break;
+                    // Ya no necesitamos 'menu' aquí, se maneja al principio
                     default:
-                        this.addBotMessage(`<div class="bot-card"><p>Actualmente, no puedo responder de manera natural. Sin embargo, puedes explorar utilizando los botones del menú. 😀</p></div>`);
-                        this.showClientMainMenu();
+                        // Solo mostrar este mensaje si no estamos en un flujo de espera
+                        if (!['awaiting_code', 'awaiting_phone'].includes(this.currentFlow)) {
+                            this.addBotMessage(`<div class="bot-card"><p>No entendí eso. Puedes usar los botones del menú.</p></div>`);
+                            this.showClientMainMenu();
+                        }
                         break;
                 }
             }
@@ -578,38 +673,56 @@
                 <div class="bot-card">
                     <h3>Escanear Código QR</h3>
                     <p>Apunta la cámara al código QR que te muestre tu barbero.</p>
-                    <div id="qr-reader"></div>
+                    <div id="qr-reader" style="width: 100%; max-width: 300px; margin: 10px auto;"></div>
                     <div class="command-buttons-container" style="margin-top: 15px;">
                         <button class="command-button return full-width" data-command="menu">Cancelar</button>
                     </div>
                 </div>`;
                 this.addBotMessage(scannerHTML);
 
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise(resolve => setTimeout(resolve, 100)); // Esperar renderizado
 
-                const html5QrCode = new Html5Qrcode("qr-reader");
-                this.qrScanner = html5QrCode; 
-                
-                const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
-                    if (this.qrScanner) {
-                        await this.qrScanner.stop();
-                        this.qrScanner = null;
-                        await this.handleScannedQRCode(decodedText);
-                    }
-                };
-
-                const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-                html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback)
-                    .catch(err => {
-                        console.error("Error al iniciar el escaner QR", err)
-                        this.addBotMessage(`<div class="bot-card"><p>❌ No se pudo iniciar la cámara. Asegúrate de dar los permisos necesarios.</p></div>`);
-                        this.showClientMainMenu();
-                    });
+                try {
+                    const html5QrCode = new Html5Qrcode("qr-reader");
+                    this.qrScanner = html5QrCode; 
+                    
+                    const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
+                        console.log(`Scan result: ${decodedText}`);
+                        if (this.qrScanner) {
+                            try {
+                                await this.qrScanner.stop();
+                                console.log("Scanner stopped successfully.");
+                            } catch (stopErr) {
+                                console.warn("Error stopping scanner (might be already stopped):", stopErr);
+                            } finally {
+                                this.qrScanner = null; 
+                                document.getElementById('qr-reader').innerHTML = ''; // Limpiar el contenedor
+                                await this.handleScannedQRCode(decodedText);
+                            }
+                        }
+                    };
+                    
+                    const config = { fps: 10, qrbox: { width: 200, height: 200 } };
+                    
+                    // Intentar iniciar con la cámara trasera
+                    await html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback);
+                    
+                } catch (err) {
+                    console.error("Error al iniciar el escaner QR:", err);
+                    this.addBotMessage(`<div class="bot-card"><p>❌ No se pudo iniciar la cámara. Asegúrate de dar los permisos necesarios y que no esté siendo usada por otra app.</p></div>`);
+                    this.showClientMainMenu(); // Volver al menú si falla
+                }
             }
+
 
             async handleScannedQRCode(qrDataString) {
                 try {
                     const paymentData = JSON.parse(qrDataString);
+                    // Validar campos básicos
+                    if (!paymentData || typeof paymentData !== 'object' || !paymentData.barber_id || !paymentData.amount || !paymentData.description || !paymentData.performer) {
+                        throw new Error("Formato de datos QR inválido.");
+                    }
+                    
                     if (paymentData.barber_id !== this.barberData.id) {
                         this.addBotMessage(`<div class="bot-card"><p>⚠️ <strong>Error:</strong> Este código QR no pertenece a ${this.barberData.barber_shop_name}.</p></div>`);
                         this.showClientMainMenu();
@@ -623,89 +736,108 @@
                         <h3>Confirmar Pago</h3>
                         <p>Estás a punto de registrar un pago para <strong>${this.barberData.barber_shop_name}</strong>.</p>
                         <ul>
-                            <li><strong>Monto:</strong> ${paymentData.amount} Bs.</li>
+                            <li><strong>Monto:</strong> ${parseFloat(paymentData.amount).toFixed(2)} Bs.</li>
                             <li><strong>Por:</strong> ${paymentData.description}</li>
                             <li><strong>Atendido por:</strong> ${paymentData.performer}</li>
                         </ul>
-                        <p class="helper-text">Recuerda realizar el pago por tu método preferido (efectivo, transferencia, etc). Esto solo registra la transacción.</p>
+                        <p class="helper-text" style="color: #FFB300;"><strong>Importante:</strong> Esto solo registra la transacción en la app. Recuerda realizar el pago real (efectivo, transferencia, etc.) directamente al barbero.</p>
                         <div class="command-buttons-container">
-                            <button class="command-button confirm" onclick="app.confirmAndProcessPayment()">✅ Sí, Confirmar Pago</button>
+                            <button class="command-button confirm" onclick="app.confirmAndProcessPayment()">✅ Sí, Registrar Pago</button>
                             <button class="command-button cancel" data-command="menu">❌ Cancelar</button>
                         </div>
                     </div>`;
                     this.addBotMessage(confirmationHTML);
+                    this.currentFlow = 'confirming_payment'; // Nuevo flujo
 
                 } catch (error) {
-                    this.addBotMessage(`<div class="bot-card"><p>❌ <strong>Código QR no válido.</strong> No pude leer la información de pago.</p></div>`);
+                    console.error("Error procesando QR:", error);
+                    this.addBotMessage(`<div class="bot-card"><p>❌ <strong>Código QR no válido.</strong> No pude leer la información de pago. Asegúrate de que sea un código generado por BarberConnect.</p></div>`);
                     this.showClientMainMenu();
                 }
             }
 
+            // Cambiamos el nombre del método en el HTML onclick
             async confirmAndProcessPayment() {
+                 // Deshabilitar botones para evitar doble clic
+                const confirmButton = document.querySelector('.command-button[onclick="app.confirmAndProcessPayment()"]');
+                const cancelButton = document.querySelector('.command-button[data-command="menu"]');
+                if (confirmButton) confirmButton.disabled = true;
+                if (cancelButton) cancelButton.disabled = true;
+
                 if (!this.paymentDataToConfirm) return;
                 
-                this.addUserMessage("Sí, Confirmar Pago");
+                // No añadir mensaje de usuario para esta acción
+                // this.addUserMessage("Sí, Registrar Pago"); 
                 this.showTyping();
 
                 const { amount, description, performer } = this.paymentDataToConfirm;
 
+                // 1. Registrar la transacción
                 const { error: transactionError } = await supabase
                     .from('transactions')
                     .insert({
                         barber_id: this.barberData.id,
                         client_id: this.clientProfile.id,
-                        amount: amount,
+                        amount: parseFloat(amount), // Asegurar que es número
                         description: description,
                         barber_name_performer: performer
                     });
 
                 if (transactionError) {
                     this.hideTyping();
-                    this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error al registrar la transacción.</p></div>`);
+                    this.addBotMessage(`<div class="bot-card" style="border-color: #F44336;"><p>❌ Hubo un error al registrar la transacción.</p><p class="helper-text">${transactionError.message}</p></div>`);
                     console.error("Error inserting transaction:", transactionError);
-                    this.showClientMainMenu();
-                    return;
+                    this.showClientMainMenu(); // O intentar de nuevo? Mejor al menú.
+                    return; // Detener ejecución
                 }
 
+                // 2. Actualizar el saldo del barbero (si la transacción fue exitosa)
                 const { error: rpcError } = await supabase.rpc('increment_barber_balance', {
                     barber_id_in: this.barberData.id,
-                    amount_in: parseFloat(amount)
+                    amount_in: parseFloat(amount) // Asegurar que es número
                 });
 
-                this.hideTyping();
+                this.hideTyping(); // Ocultar typing DESPUÉS de ambas operaciones
 
                 if (rpcError) {
-                    this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error al actualizar el saldo del barbero.</p></div>`);
+                    // La transacción se registró, pero el saldo no se actualizó (esto es menos crítico para el cliente)
+                    this.addBotMessage(`<div class="bot-card" style="border-color: #FF9800;"><p>⚠️ Pago registrado, pero hubo un problema al actualizar el saldo del barbero. Notifícale por si acaso.</p><p class="helper-text">${rpcError.message}</p></div>`);
                     console.error("Error calling RPC:", rpcError);
                 } else {
-                    this.addBotMessage(`<div class="bot-card"><p>✅ <strong>¡Pago registrado con éxito!</strong> Gracias.</p></div>`);
+                    // Todo salió bien
+                    this.addBotMessage(`<div class="bot-card" style="border-color: #4CAF50;"><p>✅ <strong>¡Pago registrado con éxito!</strong> Gracias.</p></div>`);
                 }
                 
-                this.paymentDataToConfirm = null;
-                setTimeout(() => this.showClientMainMenu(), 2000);
+                this.paymentDataToConfirm = null; // Limpiar datos de pago
+                this.currentFlow = 'main_menu'; // Volver al flujo principal
+                setTimeout(() => this.showClientMainMenu(), 2500); // Dar tiempo para leer el mensaje
             }
             
             async startProfileEditFlow() {
                 this.showTyping();
                 
+                // Refrescar perfil desde la BD
                 const { data: profile, error } = await supabase
                     .from('clients')
-                    .select('*')
+                    .select('*, avatar_url') // Asegúrate de incluir avatar_url
                     .eq('id', this.clientProfile.id)
                     .single();
                 
                 this.hideTyping();
                 
-                if(error) {
-                    this.addBotMessage('<div class="bot-card"><p>❌ No pude cargar tu perfil. Intenta de nuevo.</p></div>');
+                if(error || !profile) {
+                    console.error("Error fetching profile:", error);
+                    this.addBotMessage('<div class="bot-card"><p>❌ No pude cargar tu perfil actualizado. Intenta de nuevo.</p></div>');
+                    this.showClientMainMenu(); // Volver al menú si falla
                     return;
                 }
                 
-                this.clientProfile = profile; 
+                this.clientProfile = profile; // Actualizar perfil local
                 
                 let avatarHTML = '';
                 if (profile.avatar_url) {
-                    avatarHTML = `<div class="profile-avatar"><img src="${profile.avatar_url}" alt="Foto de Perfil"></div>`;
+                    // Añadir un timestamp para evitar caché si la imagen acaba de cambiar
+                    avatarHTML = `<div class="profile-avatar"><img src="${profile.avatar_url}?t=${new Date().getTime()}" alt="Foto de Perfil"></div>`;
                 } else {
                     const initial = profile.first_name ? profile.first_name.charAt(0).toUpperCase() : 'C';
                     avatarHTML = `<div class="profile-avatar"><span>${initial}</span></div>`;
@@ -728,54 +860,68 @@
                     <h3>👤 Mi Perfil</h3>
                     <div class="profile-avatar-wrapper">${avatarHTML}</div>
             
-                    <div class="command-buttons-container" style="margin-bottom: 15px; grid-template-columns: 1fr 1fr;">
+                    <div class="command-buttons-container" style="margin-bottom: 15px; grid-template-columns: ${profile.avatar_url ? '1fr 1fr' : '1fr'};">
                         ${photoButtonsHTML}
                     </div>
             
                     <ul>
                         <li style="display: flex; align-items: center;">
                             <span class="item-name">Nombre:</span>
-                            <span class="item-detail" style="margin-left: 1rem; text-align: left;">${profile.first_name} ${profile.last_name}</span>
-                            <button class="edit-icon-button" data-command="/editar_client_name" style="margin-left: auto;" title="Editar nombre">
+                            <span class="item-detail" style="margin-left: 1rem; text-align: left; flex-grow: 1;">${profile.first_name} ${profile.last_name}</span>
+                            <button class="edit-icon-button" data-command="/editar_client_name" style="margin-left: 10px;" title="Editar nombre">
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"></path></svg>
                             </button>
                         </li>
                         <li><span class="item-name">Teléfono:</span><span class="item-detail">${profile.phone_number}</span></li>
-                    </ul>
+                        </ul>
             
-                    <div class="command-buttons-container" style="margin-top: 10px;">
-                        <button class="command-button full-width" data-command="menu">↩️ Volver al Menú</button>
+                    <div class="command-buttons-container" style="margin-top: 15px;">
+                        <button class="command-button full-width return-menu" data-command="menu">↩️ Volver al Menú</button>
                     </div>
                 </div>`;
                 
                 this.addBotMessage(profileHTML);
-                this.currentFlow = 'profile_menu';
+                this.currentFlow = 'profile_menu'; // Estado para saber que estamos viendo el perfil
             }
+
 
             async updateClientProfile() {
                 this.showTyping();
                 const { firstName, lastName } = this.profileUpdateData;
 
+                 // Validar que los nombres no estén vacíos
+                 if (!firstName || !lastName || firstName.trim() === '' || lastName.trim() === '') {
+                    this.hideTyping();
+                    this.addBotMessage(`<div class="bot-card"><p>❌ El nombre y el apellido no pueden estar vacíos.</p>${this.mainMenuButton}</div>`);
+                    this.currentFlow = 'profile_menu'; // Volver al menú de perfil
+                    setTimeout(() => this.startProfileEditFlow(), 1500); // Mostrar perfil de nuevo
+                    return;
+                 }
+
+
                 const { data: updatedClient, error } = await supabase
                     .from('clients')
-                    .update({ first_name: firstName, last_name: lastName })
+                    .update({ 
+                        first_name: this.capitalizeName(firstName.trim()), 
+                        last_name: this.capitalizeName(lastName.trim()) 
+                     })
                     .eq('id', this.clientProfile.id)
-                    .select()
+                    .select('*, avatar_url') // Asegurarse de seleccionar avatar_url
                     .single();
 
                 this.hideTyping();
 
                 if (error) {
                     console.error("Error updating profile:", error);
-                    this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error al actualizar tu perfil.</p>${this.mainMenuButton}</div>`);
+                    this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error al actualizar tu perfil.</p><p class="helper-text">${error.message}</p>${this.mainMenuButton}</div>`);
                 } else {
-                    this.clientProfile = updatedClient;
-                    this.addBotMessage(`<div class="bot-card"><p>✅ ¡Perfecto, ${firstName}! Tu perfil ha sido actualizado.</p></div>`);
+                    this.clientProfile = updatedClient; // Actualizar perfil local
+                    this.addBotMessage(`<div class="bot-card"><p>✅ ¡Perfecto, ${updatedClient.first_name}! Tu perfil ha sido actualizado.</p></div>`);
                 }
 
-                this.profileUpdateData = {};
-                this.currentFlow = 'authenticated';
-                setTimeout(() => this.startProfileEditFlow(), 1000);
+                this.profileUpdateData = {}; // Limpiar datos temporales
+                this.currentFlow = 'profile_menu'; // Volver al estado de ver perfil
+                setTimeout(() => this.startProfileEditFlow(), 1500); // Mostrar perfil actualizado
             }
             
             triggerClientFileUpload() {
@@ -788,26 +934,27 @@
 
                 const fileTypes = ['image/png', 'image/jpeg'];
                 if (!fileTypes.includes(file.type)) {
-                    this.addBotMessage(`<div class="bot-card" style="border-color: #F44336;"><p>❌ <strong>Formato no válido.</strong><br>Por favor, sube una imagen PNG o JPG.</p></div>`);
+                    this.addBotMessage(`<div class="bot-card" style="border-left: 4px solid #F44336;"><p>❌ <strong>Formato no válido.</strong><br>Por favor, sube una imagen PNG o JPG.</p></div>`);
                     return;
                 }
                 if (file.size > 2 * 1024 * 1024) { // Límite de 2MB
-                    this.addBotMessage(`<div class="bot-card" style="border-color: #F44336;"><p>❌ <strong>Imagen muy grande.</strong><br>El límite es de 2 MB.</p></div>`);
+                    this.addBotMessage(`<div class="bot-card" style="border-left: 4px solid #F44336;"><p>❌ <strong>Imagen muy grande.</strong><br>El límite es de 2 MB.</p></div>`);
                     return;
                 }
                 
                 this.addBotMessage('<div class="bot-card"><p>Subiendo foto, por favor espera... ⏳</p></div>');
                 this.showTyping();
                 
-                const bucketName = 'client_pictures';
-                const filePath = `${this.clientProfile.id}/profile.png`; 
+                const bucketName = 'client_pictures'; // Asegúrate que este bucket exista y tenga políticas RLS adecuadas
+                const filePath = `${this.clientProfile.id}/profile_${Date.now()}.png`; // Nombre único para evitar caché agresiva
 
                 try {
-                    const { error: uploadError } = await supabase.storage
+                    // Subir la nueva imagen
+                    const { data: uploadData, error: uploadError } = await supabase.storage
                         .from(bucketName)
                         .upload(filePath, file, {
                             cacheControl: '3600',
-                            upsert: true,
+                            upsert: false, // No sobrescribir, generar nombre único
                         });
 
                     if (uploadError) {
@@ -815,64 +962,84 @@
                         throw new Error(`Error de Storage: ${uploadError.message}`);
                     }
 
+                    // Obtener la URL pública de la NUEVA imagen
                     const { data: urlData } = supabase.storage
                         .from(bucketName)
-                        .getPublicUrl(filePath);
+                        .getPublicUrl(filePath); // Usar el nuevo filePath
                         
-                    const publicURLWithCacheBuster = `${urlData.publicUrl}?t=${new Date().getTime()}`;
+                    const newPublicURL = urlData.publicUrl;
 
+                    // Actualizar el perfil del cliente con la NUEVA URL
                     const { data: updatedProfile, error: dbError } = await supabase
                         .from('clients')
-                        .update({ avatar_url: publicURLWithCacheBuster })
+                        .update({ avatar_url: newPublicURL })
                         .eq('id', this.clientProfile.id)
-                        .select()
+                        .select('*, avatar_url') // Seleccionar de nuevo para confirmar
                         .single();
 
                     if (dbError) {
                         console.error("Error en Actualización (DB):", dbError);
+                        // Intentar borrar la imagen subida si la DB falla
+                        await supabase.storage.from(bucketName).remove([filePath]);
                         throw new Error(`Error de Base de Datos: ${dbError.message}`);
                     }
 
-                    this.clientProfile = updatedProfile;
-                    this.addBotMessage('<div class="bot-card"><p>✅ ¡Foto de perfil actualizada con éxito!</p></div>');
+                    // Si había una foto anterior, borrarla (opcional, pero buena práctica)
+                    if (this.clientProfile.avatar_url) {
+                        const oldFilePath = this.clientProfile.avatar_url.split(`${bucketName}/`)[1].split('?')[0]; // Extraer path antiguo
+                         if (oldFilePath && oldFilePath !== filePath) { // Evitar borrar la que acabamos de subir
+                             await supabase.storage.from(bucketName).remove([oldFilePath]);
+                         }
+                    }
+
+                    this.clientProfile = updatedProfile; // Actualizar perfil local
+                    this.addBotMessage('<div class="bot-card" style="border-left: 4px solid #4CAF50;"><p>✅ ¡Foto de perfil actualizada con éxito!</p></div>');
                     
                 } catch (error) {
-                    console.error("Error subiendo la foto:", error);
-                    this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd; color: #D8000C;">
+                    console.error("Error completo subiendo la foto:", error);
+                    this.addBotMessage(`<div class="bot-card" style="border-left: 4px solid #F44336;">
                         <p><strong>❌ Hubo un error al subir tu foto:</strong><br><small>${error.message}</small></p>
-                        <p class="helper-text">Por favor, inténtalo de nuevo. Si el error persiste, contacta al barbero.</p>
+                        <p class="helper-text">Por favor, inténtalo de nuevo.</p>
                     </div>`);
                 } finally {
                     this.hideTyping();
-                    this.clientPicInput.value = '';
-                    await this.startProfileEditFlow();
+                    this.clientPicInput.value = ''; // Resetear input de archivo
+                    await this.startProfileEditFlow(); // Mostrar perfil actualizado
                 }
             }
             
             async deleteClientPicture() {
+                if (!this.clientProfile.avatar_url) {
+                     this.addBotMessage('<div class="bot-card"><p>No tienes una foto de perfil para eliminar.</p></div>');
+                     return;
+                }
                 if (!confirm("¿Estás seguro de que quieres eliminar tu foto de perfil?")) return;
 
                 this.addBotMessage('<div class="bot-card"><p>Eliminando foto...</p></div>');
                 this.showTyping();
                 
                 const bucketName = 'client_pictures';
-                const filePath = `${this.clientProfile.id}/profile.png`;
+                // Extraer el path del archivo de la URL guardada
+                const filePath = this.clientProfile.avatar_url.split(`${bucketName}/`)[1].split('?')[0]; // Quita parámetros como ?t=...
 
                 try {
+                    // 1. Borrar el archivo de Storage
                     const { error: removeError } = await supabase.storage
                         .from(bucketName)
                         .remove([filePath]);
                     
+                    // Ignorar error si el archivo ya no existe, pero loguear otros errores
                     if (removeError && removeError.message !== 'The resource was not found') {
                          console.error("Error borrando de Storage:", removeError);
                          throw new Error(`Error de Storage: ${removeError.message}`);
                     }
 
+                    // 2. Actualizar la base de datos a null
                     const { data: updatedProfile, error: dbError } = await supabase
                         .from('clients')
                         .update({ avatar_url: null })
                         .eq('id', this.clientProfile.id)
-                        .select()
+                        .select('*, avatar_url') // Volver a seleccionar
                         .single();
 
                     if (dbError) {
@@ -880,46 +1047,90 @@
                         throw new Error(`Error de Base de Datos: ${dbError.message}`);
                     }
 
-                    this.clientProfile = updatedProfile;
-                    this.addBotMessage('<div class="bot-card"><p>✅ Foto eliminada correctamente.</p></div>');
+                    this.clientProfile = updatedProfile; // Actualizar perfil local
+                    this.addBotMessage('<div class="bot-card" style="border-left: 4px solid #4CAF50;"><p>✅ Foto eliminada correctamente.</p></div>');
 
                 } catch (error) {
                     console.error("Error eliminando la foto:", error);
-                    this.addBotMessage(`<div class="bot-card" style="background-color: #ffdddd; color: #D8000C;">
+                    this.addBotMessage(`<div class="bot-card" style="border-left: 4px solid #F44336;">
                         <p><strong>❌ Hubo un error al eliminar tu foto:</strong><br><small>${error.message}</small></p>
                     </div>`);
                 } finally {
                     this.hideTyping();
-                    await this.startProfileEditFlow();
+                    await this.startProfileEditFlow(); // Mostrar perfil actualizado
                 }
+            }
+
+
+            capitalizeName(name) {
+                if (!name) return '';
+                return name.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
             }
 
             parseDateInput(input) {
                 const now = new Date();
-                now.setHours(0, 0, 0, 0);
+                now.setHours(0, 0, 0, 0); // Comparar solo fechas
+
+                input = input.toLowerCase().trim();
 
                 if (input === 'hoy') return now;
                 if (input === 'mañana') {
-                    now.setDate(now.getDate() + 1);
-                    return now;
+                    const tomorrow = new Date(now);
+                    tomorrow.setDate(now.getDate() + 1);
+                    return tomorrow;
                 }
+                // Intentar formato DD/MM o DD-MM
                 const parts = input.match(/^(\d{1,2})[\/\-](\d{1,2})$/);
                 if (parts) {
                     const day = parseInt(parts[1], 10);
-                    const month = parseInt(parts[2], 10) - 1;
-                    const year = now.getFullYear();
-                    const date = new Date(year, month, day);
-                    if (date < now) date.setFullYear(year + 1);
-                    return date;
+                    const month = parseInt(parts[2], 10) - 1; // Meses son 0-indexados
+                    const currentYear = now.getFullYear();
+                    
+                    // Crear fecha tentativa para este año
+                    const dateThisYear = new Date(currentYear, month, day);
+                    dateThisYear.setHours(0,0,0,0); // Asegurar hora 00:00:00
+
+                    // Verificar si la fecha es válida (ej: 31/02 no es válido)
+                     if (dateThisYear.getDate() !== day || dateThisYear.getMonth() !== month) {
+                         return null; // Fecha inválida
+                     }
+
+                    // Si la fecha ya pasó este año, asumir el próximo año
+                    if (dateThisYear < now) {
+                        const dateNextYear = new Date(currentYear + 1, month, day);
+                        dateNextYear.setHours(0,0,0,0);
+                         // Verificar validez también para el próximo año (año bisiesto)
+                         if (dateNextYear.getDate() !== day || dateNextYear.getMonth() !== month) {
+                             return null;
+                         }
+                        return dateNextYear;
+                    } else {
+                        return dateThisYear;
+                    }
                 }
-                return null;
+                // Añadir más formatos si es necesario (ej: DD/MM/YYYY)
+                 const fullParts = input.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+                 if (fullParts) {
+                    const day = parseInt(fullParts[1], 10);
+                    const month = parseInt(fullParts[2], 10) - 1;
+                    const year = parseInt(fullParts[3], 10);
+                    const date = new Date(year, month, day);
+                    date.setHours(0,0,0,0);
+                     if (date.getDate() === day && date.getMonth() === month && date.getFullYear() === year) {
+                         return date;
+                     }
+                 }
+
+                return null; // Formato no reconocido
             }
 
             async handleDateSelection(input) {
                 const selectedDate = this.parseDateInput(input);
 
+                // Verificar si la fecha es válida Y no es anterior a hoy
                 if (!selectedDate || selectedDate < new Date().setHours(0, 0, 0, 0)) {
-                    this.addBotMessage(`<div class="bot-card"><p>❌ Fecha no válida. Inténtalo de nuevo (p. ej., "hoy", "mañana" o "25/12").</p>${this.mainMenuButton}</div>`);
+                    this.addBotMessage(`<div class="bot-card"><p>❌ Fecha no válida o ya pasó. Inténtalo de nuevo (p. ej., "hoy", "mañana", "25/12" o "15/01/${new Date().getFullYear()+1}").</p>${this.mainMenuButton}</div>`);
+                    // Mantener el flujo en 'booking_date'
                     return;
                 }
 
@@ -927,79 +1138,150 @@
                 
                 this.showTyping();
                 await this.showAvailableTimesForDate(selectedDate);
-                this.hideTyping();
+                this.hideTyping(); // Ocultar después de mostrar los tiempos
             }
             
             async showAvailableTimesForDate(date) {
                 const dayMapping = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
                 const dayKey = dayMapping[date.getDay()];
+                
+                // Asegurarse de que bookingData.barberName existe
+                if (!this.bookingData.barberName || !this.barberData.availability[this.bookingData.barberName]) {
+                    this.addBotMessage(`<div class="bot-card"><p>⚠️ Error interno: No se pudo encontrar el horario del barbero. Vuelve a empezar.</p>${this.mainMenuButton}</div>`);
+                    this.showClientMainMenu();
+                    return;
+                }
+                
                 const barberSchedule = this.barberData.availability[this.bookingData.barberName][dayKey] || [];
 
                 if (barberSchedule.length === 0) {
-                    this.addBotMessage(`<div class="bot-card"><p>❌ ${this.bookingData.barberName} no trabaja el ${date.toLocaleDateString()}. Por favor, elige otra fecha.</p>${this.mainMenuButton}</div>`);
-                    this.currentFlow = 'booking_date';
+                    this.addBotMessage(`<div class="bot-card"><p>❌ ${this.bookingData.barberName} no trabaja el ${date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}. Por favor, elige otra fecha.</p>${this.mainMenuButton}</div>`);
+                    this.currentFlow = 'booking_date'; // Volver a pedir fecha
                     return;
                 }
 
+                // Definir inicio y fin del día para la consulta
                 const startOfDay = new Date(date); startOfDay.setHours(0, 0, 0, 0);
                 const endOfDay = new Date(date); endOfDay.setHours(23, 59, 59, 999);
 
-                const { data: existingBookings, error } = await supabase.from('bookings').select('booking_date').eq('barber_id', this.barberData.id).in('status', ['pending', 'confirmed']).gte('booking_date', startOfDay.toISOString()).lte('booking_date', endOfDay.toISOString());
+                // Consultar reservas existentes para ESE barbero en ESA fecha
+                const { data: existingBookings, error } = await supabase
+                    .from('bookings')
+                    .select('booking_date')
+                    .eq('barber_id', this.barberData.id) // ID del negocio
+                    .eq('barber_name', this.bookingData.barberName) // Nombre del barbero específico
+                    .in('status', ['pending', 'confirmed']) // Solo reservas activas
+                    .gte('booking_date', startOfDay.toISOString())
+                    .lte('booking_date', endOfDay.toISOString());
 
                 if (error) {
-                    this.addBotMessage(`<div class="bot-card"><p>⚠️ Error al verificar disponibilidad.</p>${this.mainMenuButton}</div>`);
+                    console.error("Error fetching existing bookings:", error);
+                    this.addBotMessage(`<div class="bot-card"><p>⚠️ Error al verificar disponibilidad. Inténtalo más tarde.</p>${this.mainMenuButton}</div>`);
                     this.showClientMainMenu();
                     return;
                 }
                 
                 const bookedHours = existingBookings.map(b => new Date(b.booking_date).getHours());
+                
+                // Filtrar horas disponibles del horario base
                 let availableHours = barberSchedule.filter(hour => !bookedHours.includes(hour));
                 
+                // Si es hoy, filtrar horas que ya pasaron
                 const now = new Date();
                 const isToday = date.toDateString() === now.toDateString();
-
                 if (isToday) {
                     availableHours = availableHours.filter(hour => hour > now.getHours());
                 }
                 
+                // Ordenar las horas disponibles
+                availableHours.sort((a, b) => a - b);
+
                 if (availableHours.length === 0) {
-                    this.addBotMessage(`<div class="bot-card"><p>❌ <strong>No hay cupos disponibles</strong> para el ${date.toLocaleDateString()}.</p><p>Por favor, elige otra fecha.</p>${this.mainMenuButton}</div>`);
-                    this.currentFlow = 'booking_date';
+                    this.addBotMessage(`<div class="bot-card"><p>❌ <strong>No hay cupos disponibles</strong> para ${this.bookingData.barberName} el ${date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}.</p><p>Por favor, elige otra fecha.</p>${this.mainMenuButton}</div>`);
+                    this.currentFlow = 'booking_date'; // Volver a pedir fecha
                     return;
                 }
 
-                const timeButtons = availableHours.map(hour => `<button class="command-button" data-command="reservar_hora:${hour}:00">${String(hour).padStart(2, '0')}:00</button>`).join('');
-                this.addBotMessage(`<div class="bot-card"><h3>⏰ Horas disponibles para el ${date.toLocaleDateString()}</h3><div class="command-buttons-container">${timeButtons}<button class="command-button" data-command="menu">↩️ Volver al Menú</button></div></div>`);
-                this.currentFlow = 'booking_time';
+                // Crear botones para las horas disponibles
+                const timeButtons = availableHours.map(hour => 
+                    `<button class="command-button" data-command="reservar_hora:${hour}:00">${String(hour).padStart(2, '0')}:00</button>`
+                ).join('');
+                
+                this.addBotMessage(`<div class="bot-card">
+                    <h3>⏰ Horas disponibles para ${this.bookingData.barberName}</h3>
+                    <p><strong>Fecha:</strong> ${date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+                    <div class="command-buttons-container">${timeButtons}
+                    <button class="command-button full-width return-menu" data-command="menu">↩️ Volver al Menú</button></div>
+                </div>`);
+                this.currentFlow = 'booking_time'; // Avanzar al siguiente paso
             }
+
 
             async handleTimeSelection(input) {
                 if (!input.startsWith('reservar_hora:')) {
-                    this.addBotMessage(`<div class="bot-card"><p>Selección no válida. Por favor, usa uno de los botones.</p>${this.mainMenuButton}</div>`);
-                    await this.showAvailableTimesForDate(this.bookingData.date);
+                    this.addBotMessage(`<div class="bot-card"><p>Selección no válida. Por favor, usa uno de los botones de hora.</p>${this.mainMenuButton}</div>`);
+                    // Re-mostrar las horas disponibles para la fecha ya seleccionada
+                    await this.showAvailableTimesForDate(this.bookingData.date); 
                     return;
                 }
 
-                const time = input.split(':')[1];
+                const timeParts = input.split(':');
+                const hour = parseInt(timeParts[1], 10);
+                const minute = parseInt(timeParts[2], 10);
+
+                // Crear el objeto Date final para la reserva
                 const finalTimestamp = new Date(this.bookingData.date);
-                finalTimestamp.setHours(parseInt(time, 10), 0, 0, 0);
+                finalTimestamp.setHours(hour, minute, 0, 0); 
                 this.bookingData.finalTimestamp = finalTimestamp;
                 
-                const confirmationHTML = `<div class="bot-card"><h3>Confirmar Reserva</h3><p>Por favor, revisa los detalles de tu cita:</p><ul><li><strong>Barbero:</strong> ${this.bookingData.barberName}</li><li><strong>Servicio:</strong> ${this.bookingData.service.name}</li><li><strong>Precio:</strong> $${this.bookingData.service.price}</li><li><strong>Fecha:</strong> ${finalTimestamp.toLocaleDateString()}</li><li><strong>Hora:</strong> ${finalTimestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</li></ul><div class="command-buttons-container"><button class="command-button confirm" data-command="confirmar_reserva">✅ Confirmar</button><button class="command-button cancel" data-command="cancelar_reserva">❌ Cancelar</button></div></div>`;
+                // Mostrar resumen para confirmación
+                const confirmationHTML = `
+                <div class="bot-card">
+                    <h3>Confirmar Reserva</h3>
+                    <p>Por favor, revisa los detalles de tu cita:</p>
+                    <ul>
+                        <li><strong>Barbero:</strong> ${this.bookingData.barberName}</li>
+                        <li><strong>Servicio:</strong> ${this.bookingData.service.name}</li>
+                        <li><strong>Precio:</strong> ${this.bookingData.service.price} Bs.</li>
+                        <li><strong>Fecha:</strong> ${finalTimestamp.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}</li>
+                        <li><strong>Hora:</strong> ${finalTimestamp.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: true })}</li>
+                    </ul>
+                    <div class="command-buttons-container">
+                        <button class="command-button confirm" data-command="confirmar_reserva">✅ Confirmar Reserva</button>
+                        <button class="command-button cancel" data-command="cancelar_reserva">❌ Cancelar</button>
+                    </div>
+                </div>`;
                 this.addBotMessage(confirmationHTML);
                 this.currentFlow = 'booking_confirmation';
             }
             
             async confirmAndCreateBooking() {
+                // Deshabilitar botones para evitar doble clic
+                const confirmButton = document.querySelector('.command-button[data-command="confirmar_reserva"]');
+                const cancelButton = document.querySelector('.command-button[data-command="cancelar_reserva"]');
+                if (confirmButton) confirmButton.disabled = true;
+                if (cancelButton) cancelButton.disabled = true;
+
                 this.showTyping();
+                
+                // Verificar que todos los datos necesarios están presentes
+                if (!this.barberData || !this.clientProfile || !this.bookingData.service || !this.bookingData.finalTimestamp || !this.bookingData.barberName) {
+                     this.hideTyping();
+                     this.addBotMessage(`<div class="bot-card"><p>⚠️ Error: Faltan datos para la reserva. Por favor, inténtalo de nuevo desde el menú.</p>${this.mainMenuButton}</div>`);
+                     this.bookingData = {}; // Limpiar datos
+                     this.currentFlow = 'main_menu';
+                     setTimeout(() => this.showClientMainMenu(), 2000);
+                     return;
+                }
+
                 const payload = { 
                     barber_id: this.barberData.id, 
                     client_id: this.clientProfile.id, 
                     service_name: this.bookingData.service.name, 
                     price: this.bookingData.service.price, 
-                    booking_date: this.bookingData.finalTimestamp.toISOString(), 
-                    status: 'confirmed', 
-                    barber_name: this.bookingData.barberName 
+                    booking_date: this.bookingData.finalTimestamp.toISOString(), // Guardar en UTC
+                    status: 'confirmed', // O 'pending' si requiere aprobación
+                    barber_name: this.bookingData.barberName // Nombre del barbero que atenderá
                 };
 
                 const { error } = await supabase.from('bookings').insert(payload);
@@ -1008,13 +1290,34 @@
                 
                 if (error) {
                     console.error('Error al crear la reserva en Supabase:', error);
-                    this.addBotMessage(`<div class="bot-card"><p>Lo siento, ocurrió un error al crear tu reserva. <br><small>Detalle: ${error.message}</small></p>${this.mainMenuButton}</div>`);
+                     // Verificar si es un error de horario duplicado (requiere una función/trigger en Supabase)
+                     if (error.message.includes('booking_conflict')) { // Asumiendo un mensaje de error específico
+                         this.addBotMessage(`<div class="bot-card" style="border-left: 4px solid #FF9800;">
+                            <p>⚠️ ¡Uy! Parece que alguien reservó esa hora justo ahora.</p>
+                            <p>Por favor, selecciona otra hora.</p>
+                         </div>`);
+                         // Volver a mostrar las horas disponibles para esa fecha
+                         this.currentFlow = 'booking_time'; 
+                         await this.showAvailableTimesForDate(this.bookingData.date);
+                     } else {
+                         // Otro tipo de error
+                        this.addBotMessage(`<div class="bot-card" style="border-left: 4px solid #F44336;">
+                            <p>❌ Lo siento, ocurrió un error al crear tu reserva.</p>
+                            <p class="helper-text">${error.message}</p>
+                            ${this.mainMenuButton}
+                        </div>`);
+                        this.bookingData = {}; // Limpiar datos en caso de error grave
+                        this.currentFlow = 'main_menu';
+                     }
                 } else {
-                    this.addBotMessage('<div class="bot-card"><p>✅ ¡Tu reserva ha sido confirmada con éxito!</p></div>');
+                    // Éxito
+                    this.addBotMessage('<div class="bot-card" style="border-left: 4px solid #4CAF50;"><p>✅ ¡Tu reserva ha sido confirmada con éxito!</p><p>Te esperamos.</p></div>');
+                    this.bookingData = {}; // Limpiar datos después del éxito
+                    this.currentFlow = 'main_menu';
+                    setTimeout(() => this.showClientMainMenu(), 2500); // Volver al menú después de un tiempo
                 }
-                this.bookingData = {};
-                setTimeout(() => this.showClientMainMenu(), 1500);
             }
+
 
             async checkConnection() {
                 const storedCode = localStorage.getItem('barber_code');
@@ -1022,150 +1325,261 @@
 
                 if (storedCode && clientId) {
                     this.showTyping();
-                    const { data: barber, error: barberError } = await supabase.from('barbers').select('*').eq('public_code', storedCode).single();
-                    const { data: client, error: clientError } = await supabase.from('clients').select('*, avatar_url').eq('id', clientId).single();
-                    this.hideTyping();
+                    let barber = null, client = null, barberError = null, clientError = null;
+
+                    // Intentar obtener datos del barbero y cliente
+                    try {
+                        const { data: barberData, error: bError } = await supabase.from('barbers').select('*').eq('public_code', storedCode).single();
+                        if (bError) throw bError;
+                        barber = barberData;
+
+                        const { data: clientData, error: cError } = await supabase.from('clients').select('*, avatar_url').eq('id', clientId).single();
+                        if (cError) throw cError;
+                        client = clientData;
+
+                    } catch (error) {
+                        console.error("Error fetching initial data:", error);
+                        // Guardar los errores específicos si ocurrieron
+                        if (error.message.includes('barbers')) barberError = error;
+                        if (error.message.includes('clients')) clientError = error;
+                    } finally {
+                        this.hideTyping();
+                    }
                     
                     if (barber && client) {
                         this.barberData = barber;
                         this.clientProfile = client;
-                        await this.getOrCreateChatSession();
-                        this.updateHeader();
+                        await this.getOrCreateChatSession(); // Necesario para notificaciones/chat
+                        this.updateHeader(); // Actualizar header con datos cargados
                         this.addBotMessage(`<div class="bot-card"><h3>¡Hola de nuevo, ${this.clientProfile.first_name}! 👋</h3><p>Estás conectado con <strong>${this.barberData.barber_shop_name}</strong>.</p></div>`);
                         this.showClientMainMenu();
-                        this.subscribeToNotifications();
+                        this.subscribeToNotifications(); // Suscribirse a notificaciones generales
                     } else {
-                        localStorage.clear();
+                        // Si falla la carga (barbero o cliente no encontrado, o error de red)
+                        localStorage.clear(); // Limpiar datos inválidos
+                        this.addBotMessage(`<div class="bot-card"><p>⚠️ Hubo un problema al reconectar. Por favor, introduce el código de nuevo.</p></div>`);
                         this.promptForCode();
                     }
                 } else {
+                    // No hay datos guardados, pedir código por primera vez
                     this.promptForCode();
                 }
             }
 
+
             promptForCode() {
-                this.addBotMessage(`<div class="bot-card"><h3>¡Bienvenido!</h3><p>Por favor, introduce el código único de tu barbero para conectar.</p></div>`);
+                this.addBotMessage(`<div class="bot-card"><h3>¡Bienvenido a BarberConnect! 💈</h3><p>Para empezar, por favor, introduce el <strong>código único</strong> de 6 letras que te proporcionó tu barbero.</p></div>`);
                 this.currentFlow = 'awaiting_code';
-                this.messageInput.placeholder = "Escribe el código del barbero...";
+                this.messageInput.placeholder = "Escribe el código del barbero aquí...";
+                this.updateHeader(); // Mostrar header genérico inicial
             }
 
+
             async handleCodeEntry(code) {
+                 const upperCaseCode = code.toUpperCase().trim(); // Limpiar y convertir a mayúsculas
+                 // Validar longitud del código
+                 if (upperCaseCode.length !== 6) {
+                     this.addBotMessage(`<div class="bot-card"><p>❌ El código debe tener 6 letras. Inténtalo de nuevo.</p></div>`);
+                     return; // No continuar si la longitud es incorrecta
+                 }
+
                 this.showTyping();
-                const { data, error } = await supabase.from('barbers').select('*').eq('public_code', code.toUpperCase()).single();
+                const { data, error } = await supabase
+                    .from('barbers')
+                    .select('*') // Seleccionar todo para tener avatar_url, etc.
+                    .eq('public_code', upperCaseCode)
+                    .single();
                 this.hideTyping();
 
                 if (data && !error) {
-                    this.barberData = data;
-                    localStorage.setItem('barber_code', this.barberData.public_code);
+                    this.barberData = data; // Guardar todos los datos del barbero
+                    localStorage.setItem('barber_code', this.barberData.public_code); // Guardar código
                     
-                    this.updateHeader();
+                    this.updateHeader(); // Actualizar header con datos del barbero
+                    
                     this.addBotMessage(`<div class="bot-card">
                         <p>✅ ¡Conexión exitosa con <strong>${this.barberData.barber_shop_name}</strong>!</p>
-                        <p>Para recuperar tu historial o crear tu perfil, por favor, introduce tu <strong>número de teléfono</strong> (Ej: 04121234567).</p>
+                        <p>Ahora, para identificarte o crear tu perfil, por favor, introduce tu <strong>número de teléfono</strong> (Ej: 04121234567).</p>
+                        <p class="helper-text">Usaremos tu número para guardar tus citas y preferencias.</p>
                     </div>`);
                     
                     this.currentFlow = 'awaiting_phone'; 
                     this.messageInput.placeholder = "Escribe tu número de teléfono...";
+                    this.messageInput.type = "tel"; // Cambiar tipo para facilitar ingreso en móviles
                 } else {
-                    this.addBotMessage(`<div class="bot-card"><p>❌ Código no válido. Por favor, inténtalo de nuevo.</p></div>`);
+                    console.error("Error fetching barber by code:", error);
+                    this.addBotMessage(`<div class="bot-card"><p>❌ Código no encontrado. Verifica que sea correcto e inténtalo de nuevo.</p></div>`);
+                    // Mantener el flujo en 'awaiting_code'
                 }
             }
+
 
             async findOrCreateClientByPhone(phone) {
+                 // Validar formato básico de teléfono (ejemplo simple, ajustar según necesidad)
+                 const phoneRegex = /^\d{10,11}$/; // Ejemplo: 10 u 11 dígitos
+                 const cleanedPhone = phone.replace(/\s+/g, ''); // Quitar espacios
+
+                 if (!phoneRegex.test(cleanedPhone)) {
+                    this.addBotMessage(`<div class="bot-card"><p>❌ Número de teléfono inválido. Debe tener 10 u 11 dígitos (Ej: 04121234567).</p></div>`);
+                    // Mantener el flujo en 'awaiting_phone'
+                    return; 
+                 }
+
+
                 this.showTyping();
-                
-                const { data: existingClient, error: findError } = await supabase
-                    .from('clients')
-                    .select('*, avatar_url')
-                    .eq('linked_barber_id', this.barberData.id)
-                    .eq('phone_number', phone)
-                    .single(); 
+                let clientProfile = null;
+                let errorMessage = null;
 
-                if (existingClient) {
-                    this.hideTyping();
-                    this.clientProfile = existingClient;
-                    localStorage.setItem('client_id', this.clientProfile.id);
-
-                    await this.getOrCreateChatSession();
-                    this.updateHeader();
-                    
-                    this.addBotMessage(`<div class="bot-card"><h3>¡Bienvenido de nuevo, ${this.clientProfile.first_name}! 👋</h3><p>Hemos recuperado tu historial con <strong>${this.barberData.barber_shop_name}</strong>.</p></div>`);
-                    
-                    this.showClientMainMenu();
-                    this.subscribeToNotifications();
-
-                } else {
-                    const anonymousName = `Anónimo-${Math.random().toString(36).substring(2, 8)}`;
-                    const { data: newClient, error: createError } = await supabase
+                try {
+                    // Buscar si ya existe un cliente con ese teléfono VINCULADO a ESTE barbero
+                    const { data: existingClient, error: findError } = await supabase
                         .from('clients')
-                        .insert({ 
-                            first_name: 'Cliente', 
-                            last_name: anonymousName, 
-                            linked_barber_id: this.barberData.id,
-                            phone_number: phone 
-                        })
-                        .select('*, avatar_url')
-                        .single();
-                    
-                    this.hideTyping();
+                        .select('*, avatar_url') // Incluir avatar_url
+                        .eq('linked_barber_id', this.barberData.id) // Clave: vinculado a este barbero
+                        .eq('phone_number', cleanedPhone)
+                        .maybeSingle(); // Usar maybeSingle para que no dé error si no encuentra
 
-                    if (createError) {
-                        console.error("Error creating client:", createError);
-                        this.addBotMessage(`<div class="bot-card"><p>❌ Hubo un error al crear tu perfil. Es posible que ese teléfono ya esté en uso. <br><small>${createError.message}</small></p></div>`);
-                        this.promptForCode();
-                        return;
+                    if (findError) throw findError; // Lanzar error si la consulta falla
+
+                    if (existingClient) {
+                        // Cliente encontrado y vinculado a este barbero
+                        clientProfile = existingClient;
+                        localStorage.setItem('client_id', clientProfile.id); // Guardar ID
+                        await this.getOrCreateChatSession(); // Asegurar sesión de chat
+                        this.updateHeader(); // Actualizar header
+
+                        this.addBotMessage(`<div class="bot-card"><h3>¡Bienvenido de nuevo, ${clientProfile.first_name}! 👋</h3><p>Hemos recuperado tu historial con <strong>${this.barberData.barber_shop_name}</strong>.</p></div>`);
+                        this.showClientMainMenu();
+                        this.subscribeToNotifications(); // Suscribirse a notificaciones generales
+                    
+                    } else {
+                        // Cliente no encontrado para este barbero, hay que crearlo
+                        const { data: newClient, error: createError } = await supabase
+                            .from('clients')
+                            .insert({ 
+                                first_name: 'Cliente', // Nombre temporal
+                                last_name: `User-${cleanedPhone.slice(-4)}`, // Apellido temporal
+                                linked_barber_id: this.barberData.id, // Vincular al barbero actual
+                                phone_number: cleanedPhone 
+                            })
+                            .select('*, avatar_url') // Seleccionar perfil creado, incluyendo avatar (será null)
+                            .single(); // Esperar un solo resultado
+
+                        if (createError) throw createError; // Lanzar error si la creación falla
+
+                        clientProfile = newClient;
+                        localStorage.setItem('client_id', clientProfile.id); // Guardar nuevo ID
+                        await this.getOrCreateChatSession(); // Crear sesión de chat
+                        this.updateHeader(); // Actualizar header
+
+                        this.addBotMessage(`<div class="bot-card"><p>¡Perfecto! Hemos creado tu perfil con el número ${cleanedPhone}.</p></div>`);
+                        
+                        // Guiar para completar el perfil
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Pequeña pausa
+                        this.addBotMessage(`<div class="bot-card"><h3>📝 Completa tu Perfil</h3><p>Para una mejor atención, ¿cuál es tu <strong>nombre</strong>?</p>${this.mainMenuButton}</div>`);
+                        this.currentFlow = 'editing_profile_firstname'; // Iniciar flujo de edición
+                        this.messageInput.placeholder = "Escribe tu nombre...";
+                        this.messageInput.type = "text"; // Volver a tipo texto
                     }
-
-                    this.clientProfile = newClient;
-                    localStorage.setItem('client_id', this.clientProfile.id);
-
-                    await this.getOrCreateChatSession();
-                    this.updateHeader();
-
-                    this.addBotMessage(`<div class="bot-card"><p>¡Perfecto! Hemos creado tu perfil con el número ${phone}.</p></div>`);
-                    
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    this.addBotMessage(`<div class="bot-card"><h3>📝 Completa tu Perfil</h3><p>Para una mejor atención, ¿cuál es tu <strong>nombre</strong>?</p>${this.mainMenuButton}</div>`);
-                    this.currentFlow = 'editing_profile_firstname';
-                    this.messageInput.placeholder = "Escribe tu nombre...";
+                } catch (error) {
+                    console.error("Error finding/creating client:", error);
+                    errorMessage = error.message;
+                     // Manejar error de teléfono duplicado (unique constraint)
+                     if (error.message.includes('duplicate key value violates unique constraint "clients_phone_number_key"')) {
+                         errorMessage = "Este número de teléfono ya está registrado con otro perfil. Contacta al barbero si crees que es un error.";
+                     }
+                    this.addBotMessage(`<div class="bot-card" style="border-left: 4px solid #F44336;"><p>❌ Hubo un error al procesar tu número.</p><p class="helper-text">${errorMessage}</p></div>`);
+                    // Podríamos volver a pedir el teléfono o el código? Volver a pedir teléfono parece más lógico.
+                    this.currentFlow = 'awaiting_phone'; 
+                    this.messageInput.placeholder = "Escribe tu número de teléfono...";
+                    this.messageInput.type = "tel";
+                } finally {
+                    this.hideTyping();
+                    if (clientProfile) {
+                        this.clientProfile = clientProfile; // Asignar perfil si todo fue bien
+                         this.messageInput.type = "text"; // Asegurar que el input vuelva a texto
+                         this.messageInput.placeholder = "Escribe un mensaje..."; // Restaurar placeholder
+                    }
                 }
             }
+
 
 
             async getOrCreateChatSession() {
-                if (!this.clientProfile) return;
-                const { data, error } = await supabase.from('chats').select('id').eq('barber_id', this.barberData.id).eq('client_id', this.clientProfile.id).single();
-                if (data) { this.chatId = data.id; } 
-                else {
-                    const { data: newChat, error: newChatError } = await supabase.from('chats').insert({ barber_id: this.barberData.id, client_id: this.clientProfile.id }).select('id').single();
-                    if (newChat) this.chatId = newChat.id; else console.error("Error creating chat:", newChatError);
+                if (!this.clientProfile || !this.barberData) {
+                    console.error("Cannot get/create chat without client or barber data.");
+                    return; 
+                }
+                
+                // Buscar chat existente
+                const { data, error } = await supabase
+                    .from('chats')
+                    .select('id')
+                    .eq('barber_id', this.barberData.id)
+                    .eq('client_id', this.clientProfile.id)
+                    .maybeSingle(); // Usar maybeSingle
+
+                if (error) {
+                    console.error("Error fetching chat:", error);
+                    // Podríamos mostrar un error al usuario aquí
+                    return;
+                }
+
+                if (data) { 
+                    // Chat encontrado
+                    this.chatId = data.id; 
+                    console.log("Chat session found:", this.chatId);
+                } else {
+                    // Chat no encontrado, crearlo
+                    console.log("Chat session not found, creating new one...");
+                    const { data: newChat, error: newChatError } = await supabase
+                        .from('chats')
+                        .insert({ 
+                            barber_id: this.barberData.id, 
+                            client_id: this.clientProfile.id 
+                        })
+                        .select('id') // Seleccionar el ID del chat creado
+                        .single(); // Esperar un solo resultado
+
+                    if (newChatError) {
+                        console.error("Error creating chat:", newChatError);
+                        // Mostrar error al usuario
+                        this.addBotMessage(`<div class="bot-card"><p>❌ Error al iniciar la sesión de chat.</p></div>`);
+                    } else if (newChat) {
+                        this.chatId = newChat.id; // Guardar el ID del nuevo chat
+                        console.log("New chat session created:", this.chatId);
+                    }
                 }
             }
+
 
             updateHeader() {
                 let avatarHTML = '';
                 const shopName = this.barberData ? this.barberData.barber_shop_name : "BarberConnect";
-                const avatarUrl = this.barberData ? this.barberData.avatar_url : null;
+                // Usar avatar del barbero si está disponible
+                const avatarUrl = this.barberData ? this.barberData.avatar_url : null; 
                 const subTitle = this.barberData ? "Asistente de Citas" : "Portal del Cliente";
 
                 if (avatarUrl) {
                     avatarHTML = `
                         <div class="profile-picture-container">
-                            <img src="${avatarUrl}" alt="Perfil de ${shopName}" class="barber-profile-pic">
+                            <img src="${avatarUrl}?t=${new Date().getTime()}" alt="Perfil de ${shopName}" class="barber-profile-pic">
                         </div>`;
                 } else {
+                     // Usar iniciales si no hay foto
                     const initial = shopName ? shopName.charAt(0).toUpperCase() : 'B';
                     avatarHTML = `
-                        <div class="profile-picture-container" style="display:flex; align-items:center; justify-content:center; background-color:#FFB300; color:#121212; font-size: 1.8em; font-weight: bold;">
+                        <div class="profile-picture-container" style="display:flex; align-items:center; justify-content:center; background-color:#444; color:#FFF; font-size: 1.8em; font-weight: bold;">
                            <span>${initial}</span>
                         </div>`;
                 }
 
+                // Reconstruir todo el header
                 this.chatHeader.innerHTML = `
                     ${avatarHTML}
                     <div id="header-title" style="margin-right: auto;">
-                        <h1 style="font-size: 1.2em; margin: 0;">${shopName}</h1>
-                        <p style="font-size: 0.8em; opacity: 0.9; margin: 0;">${subTitle}</p>
+                        <h1 style="font-size: 1.2em; margin: 0; color: #FFF;">${shopName}</h1>
+                        <p style="font-size: 0.8em; opacity: 0.8; margin: 2px 0 0 0; color: #A0A0A0;">${subTitle}</p>
                     </div>
                     <div class="header-icons">
                         <div class="icon-wrapper" id="messagesIconWrapper" title="Ver mensajes">
@@ -1174,123 +1588,303 @@
                         </div>
                     </div>`;
                 
+                // Volver a asignar elementos y listeners que están dentro del header
                 this.notificationBadge = document.getElementById('notificationBadge');
                 this.messagesIconWrapper = document.getElementById('messagesIconWrapper');
-                this.messagesIconWrapper.addEventListener('click', () => {
-                    if (this.unreadCount > 0) this.enterLiveChatMode();
-                });
+                // Reasignar listener si existe y hay unreadCount
+                 if (this.messagesIconWrapper) {
+                    this.messagesIconWrapper.addEventListener('click', () => {
+                        // Solo entrar al chat si hay mensajes sin leer O si ya está en modo menú principal
+                        if (this.unreadCount > 0 || this.currentFlow === 'main_menu') {
+                            this.enterLiveChatMode();
+                        }
+                    });
+                     this.updateNotificationBadge(); // Actualizar badge por si acaso
+                 }
             }
             
             showClientMainMenu() {
-                const menuHTML = `<div class="bot-card"><h3>Menú Principal</h3><p>¿Cómo puedo ayudarte hoy?</p><div class="command-buttons-container">
+                 // Asegurarse de que el flujo es correcto y el placeholder/tipo de input son los adecuados
+                 this.currentFlow = 'main_menu';
+                 this.messageInput.placeholder = "Usa los botones o escribe 'menu'";
+                 this.messageInput.type = "text"; 
+                 this.bookingData = {}; // Limpiar datos de reserva pendientes
+                 this.profileUpdateData = {}; // Limpiar datos de perfil pendientes
+                 this.paymentDataToConfirm = null; // Limpiar datos de pago pendientes
+
+                 // Ocultar botón de menú si está visible (ya estamos en el menú)
+                 this.menuButton.classList.remove('visible');
+
+                const menuHTML = `<div class="bot-card"><h3>Menú Principal</h3><p>Hola ${this.clientProfile?.first_name || 'Cliente'}, ¿cómo puedo ayudarte hoy con ${this.barberData?.barber_shop_name || 'tu barbero'}?</p><div class="command-buttons-container">
                 <button class="command-button" data-command="/reservar">📅 Hacer una Reserva</button>
                 <button class="command-button" data-command="/servicios">🛠️ Ver Servicios</button>
                 <button class="command-button" data-command="/horario">⏰ Ver Horario</button>
                 <button class="command-button" data-command="/miperfil">👤 Mi Perfil</button>
                 <button class="command-button" data-command="/hablar">💬 Hablar con el Barbero</button>
                 <button class="command-button" data-command="/suscribirse_notificaciones">🔔 Activar Notificaciones</button>
-                <button class="command-button full-width" style="background-color: #4CAF50; color: white;" data-command="/pagar_qr">📲 Pagar con QR</button>
+                <button class="command-button full-width confirm" data-command="/pagar_qr">📲 Registrar Pago (QR)</button>
                 </div></div>`;
                 this.addBotMessage(menuHTML);
-                this.currentFlow = 'main_menu';
-                this.messageInput.placeholder = "Usa los botones o escribe 'menu'";
             }
 
             async showServicesForBooking() {
-                const barberServices = this.barberData.services[this.bookingData.barberName] || [];
-                
-                if (barberServices.length === 0) {
-                    this.addBotMessage(`<div class="bot-card"><p>Lo siento, ${this.bookingData.barberName} no tiene servicios disponibles para reservar.</p>${this.mainMenuButton}</div>`);
-                    this.showClientMainMenu();
+                // Verificar que barberName está definido
+                if (!this.bookingData.barberName) {
+                    this.addBotMessage(`<div class="bot-card"><p>⚠️ Primero necesitas seleccionar un barbero.</p>${this.mainMenuButton}</div>`);
+                    await this.startBookingFlow(); // Volver a pedir barbero
                     return;
                 }
 
-                const buttonsHTML = barberServices.map(s => `<button class="command-button" data-command="reservar_servicio:${s.name}">${s.name} ($${s.price})</button>`).join('');
-                this.addBotMessage(`<div class="bot-card"><h3>Selecciona un servicio con ${this.bookingData.barberName}</h3><div class="command-buttons-container">${buttonsHTML}${this.mainMenuButton}</div></div>`);
-                this.currentFlow = 'booking_service';
+                const barberServices = this.barberData.services[this.bookingData.barberName] || [];
+                
+                if (barberServices.length === 0) {
+                    this.addBotMessage(`<div class="bot-card"><p>Lo siento, ${this.bookingData.barberName} no tiene servicios disponibles para reservar en este momento.</p>${this.mainMenuButton}</div>`);
+                    // Podríamos volver al menú o a la selección de barbero si hay más de uno
+                    this.showClientMainMenu(); 
+                    return;
+                }
+
+                const buttonsHTML = barberServices.map(s => 
+                    `<button class="command-button" data-command="reservar_servicio:${s.name}">${s.name} (${s.price} Bs.)</button>`
+                ).join('');
+                this.addBotMessage(`<div class="bot-card">
+                    <h3>Selecciona un servicio con ${this.bookingData.barberName}</h3>
+                    <div class="command-buttons-container">${buttonsHTML}
+                    <button class="command-button full-width return-menu" data-command="menu">↩️ Volver al Menú</button></div>
+                </div>`);
+                this.currentFlow = 'booking_service'; // Actualizar flujo
             }
             
             showServices() {
-                let servicesHTML = '<p>Este barbero aún no ha agregado servicios.</p>';
+                let servicesHTML = '';
+                let hasServices = false;
+
                 if (this.barberData.services && Object.keys(this.barberData.services).length > 0) {
-                    let allServices = [];
-                    Object.values(this.barberData.services).forEach(serviceList => {
-                        allServices = allServices.concat(serviceList);
+                    Object.entries(this.barberData.services).forEach(([barberName, serviceList]) => {
+                         if (serviceList && serviceList.length > 0) {
+                            hasServices = true;
+                            servicesHTML += `<h4 style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #2C2C2C;">${barberName}</h4>`;
+                            servicesHTML += '<ul>';
+                            servicesHTML += serviceList.map(svc => 
+                                `<li><span class="item-name">${svc.name}</span><span class="item-detail">${svc.price} Bs.</span></li>`
+                            ).join('');
+                            servicesHTML += '</ul>';
+                         }
                     });
-                    servicesHTML = allServices.map(svc => `<li><span>${svc.name}</span><strong>$${svc.price}</strong></li>`).join('');
                 }
-                this.addBotMessage(`<div class="bot-card"><h3>🛠️ Servicios Disponibles</h3><ul>${servicesHTML}</ul>${this.mainMenuButton}</div>`);
+                
+                if (!hasServices) {
+                     servicesHTML = '<p>Este barbero aún no ha agregado servicios.</p>';
+                }
+
+                this.addBotMessage(`<div class="bot-card">
+                    <h3>🛠️ Servicios Disponibles</h3>
+                    ${servicesHTML}
+                    ${this.mainMenuButton}
+                </div>`);
+                this.currentFlow = 'viewing_services'; // Estado opcional
             }
 
             showAvailability() {
                 const days = { mon: 'Lunes', tue: 'Martes', wed: 'Miércoles', thu: 'Jueves', fri: 'Viernes', sat: 'Sábado', sun: 'Domingo' };
                 let availabilityHTML = '';
-                Object.keys(this.barberData.availability).forEach(barberName => {
-                    availabilityHTML += `<h4>${barberName}</h4>`;
-                    const schedule = this.barberData.availability[barberName];
-                    let barberScheduleHTML = Object.keys(days).map(key => {
-                        const hours = schedule[key] || [];
-                        const timeRange = hours.length > 0 ? hours.map(h => `${h}:00`).join(', ') : 'Cerrado';
-                        return `<li><span>${days[key]}</span><span>${timeRange}</span></li>`;
-                    }).join('');
-                    availabilityHTML += `<ul>${barberScheduleHTML}</ul>`;
-                });
-                this.addBotMessage(`<div class="bot-card"><h3>⏰ Horario de Atención</h3>${availabilityHTML}${this.mainMenuButton}</div>`);
+                let hasAvailability = false;
+
+                if (this.barberData.availability && Object.keys(this.barberData.availability).length > 0) {
+                    Object.entries(this.barberData.availability).forEach(([barberName, schedule]) => {
+                         // Verificar si el horario no está vacío
+                         if (schedule && Object.values(schedule).some(hours => hours && hours.length > 0)) {
+                             hasAvailability = true;
+                            availabilityHTML += `<h4 style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #2C2C2C;">${barberName}</h4>`;
+                            let barberScheduleHTML = Object.keys(days).map(key => {
+                                const hours = schedule[key] || [];
+                                const timeRange = hours.length > 0 
+                                    ? hours.sort((a,b)=>a-b).map(h => `${String(h).padStart(2, '0')}:00`).join(', ') 
+                                    : '<span style="color: #F44336;">Cerrado</span>'; // Resaltar cerrado
+                                return `<li><span class="item-name">${days[key]}</span><span class="item-detail">${timeRange}</span></li>`;
+                            }).join('');
+                            availabilityHTML += `<ul>${barberScheduleHTML}</ul>`;
+                         }
+                    });
+                }
+
+                 if (!hasAvailability) {
+                     availabilityHTML = '<p>Este barbero aún no ha definido su horario.</p>';
+                 }
+
+                this.addBotMessage(`<div class="bot-card">
+                    <h3>⏰ Horario de Atención</h3>
+                    ${availabilityHTML}
+                    ${this.mainMenuButton}
+                </div>`);
+                this.currentFlow = 'viewing_schedule'; // Estado opcional
             }
 
-            async startBookingFlow() {
-                if (!this.barberData.services) { 
-                    this.addBotMessage(`<div class="bot-card"><p>Lo siento, no hay servicios disponibles para reservar.</p>${this.mainMenuButton}</div>`); 
-                    return; 
-                }
-                
-                const barbers = Object.keys(this.barberData.availability);
 
-                if (barbers.length > 1) {
-                    const barberButtons = barbers.map(name => 
+            async startBookingFlow() {
+                // Verificar si hay servicios y disponibilidad configurados
+                 if (!this.barberData.services || Object.keys(this.barberData.services).length === 0 || 
+                     !this.barberData.availability || Object.keys(this.barberData.availability).length === 0 ||
+                     Object.values(this.barberData.availability).every(schedule => Object.keys(schedule).length === 0)) 
+                 { 
+                    this.addBotMessage(`<div class="bot-card"><p>Lo siento, ${this.barberData.barber_shop_name} aún no ha configurado sus servicios u horarios para reservar.</p><p>Puedes intentar hablar directamente con el barbero.</p>${this.mainMenuButton}</div>`); 
+                    return; 
+                 }
+                
+                const barbersWithSchedules = Object.keys(this.barberData.availability).filter(
+                     // Incluir solo barberos que tengan algún día con horas definidas
+                    name => this.barberData.availability[name] && Object.values(this.barberData.availability[name]).some(hours => hours && hours.length > 0)
+                );
+
+                if (barbersWithSchedules.length === 0) {
+                     this.addBotMessage(`<div class="bot-card"><p>Lo siento, no hay barberos con horarios disponibles configurados para reservar en este momento.</p>${this.mainMenuButton}</div>`); 
+                     return;
+                }
+
+                // Si solo hay un barbero con horario, seleccionarlo automáticamente
+                if (barbersWithSchedules.length === 1) {
+                    this.bookingData.barberName = barbersWithSchedules[0];
+                    await this.showServicesForBooking(); // Mostrar servicios de ese barbero
+                } else {
+                    // Si hay varios, mostrar botones para elegir
+                    const barberButtons = barbersWithSchedules.map(name => 
                         `<button class="command-button" data-command="seleccionar_barbero:${name}">${name}</button>`
                     ).join('');
-                    this.addBotMessage(`<div class="bot-card"><h3>Selecciona un barbero</h3><div class="command-buttons-container">${barberButtons}${this.mainMenuButton}</div></div>`);
+                    this.addBotMessage(`<div class="bot-card">
+                        <h3>¿Con quién deseas reservar?</h3>
+                        <p>Selecciona uno de nuestros barberos:</p>
+                        <div class="command-buttons-container">${barberButtons}
+                        <button class="command-button full-width return-menu" data-command="menu">↩️ Volver al Menú</button></div>
+                    </div>`);
                     this.currentFlow = 'booking_barber';
-                } else {
-                    this.bookingData.barberName = barbers[0];
-                    await this.showServicesForBooking(); 
                 }
             }
             
             async enterLiveChatMode() {
+                // Desuscribirse de notificaciones generales si existe
                 if (this.notificationSubscription) {
-                    this.notificationSubscription.unsubscribe();
+                    await this.notificationSubscription.unsubscribe();
                     this.notificationSubscription = null;
                 }
 
                 this.currentFlow = 'live_chat';
-                this.messagesContainer.innerHTML = '';
+                this.messagesContainer.innerHTML = ''; // Limpiar mensajes del menú/bot
                 
+                // Mostrar botón de menú y ajustar placeholder
                 this.menuButton.classList.add('visible');
-                this.messageInput.placeholder = "Escribe un mensaje al barbero...";
-                this.addBotMessage('<div class="bot-card"><p>Ahora estás chateando directamente con tu barbero.</p></div>'); 
+                this.messageInput.placeholder = `Habla con ${this.barberData?.barber_shop_name || 'el barbero'}...`;
+                this.messageInput.type = "text"; // Asegurar tipo texto
 
-                this.resetUnreadCount();
+                // Mensaje inicial en modo chat
+                this.addBotMessage('<div class="bot-card" style="border-left: 4px solid #FFB300;"><p>Estás en el chat directo. Escribe tu mensaje.</p><p class="helper-text">Usa el botón ☰ para volver al menú.</p></div>'); 
 
-                const { data: messages, error } = await supabase.from('messages').select('*').eq('chat_id', this.chatId).order('created_at');
-                if (messages) { messages.forEach(msg => this.renderMessage(msg, false)); }
+                this.resetUnreadCount(); // Marcar mensajes como leídos
+
+                // Cargar historial del chat
+                const { data: messages, error } = await supabase
+                    .from('messages')
+                    .select('*')
+                    .eq('chat_id', this.chatId)
+                    .order('created_at');
+                    
+                if (error) {
+                    console.error("Error fetching chat history:", error);
+                    this.addBotMessage('<div class="bot-card"><p>❌ Error al cargar el historial.</p></div>');
+                } else if (messages) { 
+                    messages.forEach(msg => this.renderMessage(msg, false)); // Renderizar sin scroll automático inicial
+                }
+                
+                // Añadir el indicador de escritura del barbero (oculto) al final
+                 const typingIndicatorHTML = `
+                     <div class="message bot" id="barber-typing-indicator" style="display: none;">
+                         <div class="typing"><span></span><span></span><span></span></div>
+                     </div>`;
+                 // Asegurarse de que no haya duplicados si se entra y sale del chat
+                 const existingIndicator = document.getElementById('barber-typing-indicator');
+                 if (!existingIndicator) {
+                     this.messagesContainer.insertAdjacentHTML('beforeend', typingIndicatorHTML);
+                 } else {
+                     existingIndicator.style.display = 'none'; // Asegurarse que esté oculto al entrar
+                 }
+
+                // Scroll al final DESPUÉS de cargar mensajes y añadir indicador
                 this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
 
-                if (this.chatSubscription) this.chatSubscription.unsubscribe();
-                this.chatSubscription = supabase.channel(`chat-room-${this.chatId}`)
-                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${this.chatId}`},
-                        payload => {
-                            if (payload.new.sender_type === 'barber') this.renderMessage(payload.new);
+                // Suscribirse a nuevos mensajes Y eventos de escritura para este chat específico
+                if (this.chatSubscription) { 
+                    await this.chatSubscription.unsubscribe(); // Desuscribirse si ya existía
+                }
+                
+                const typingIndicatorElement = document.getElementById('barber-typing-indicator'); // Obtener referencia al elemento
+
+                this.chatSubscription = supabase.channel(`chat_${this.chatId}`)
+                    .on('postgres_changes', { 
+                        event: 'INSERT', 
+                        schema: 'public', 
+                        table: 'messages', 
+                        filter: `chat_id=eq.${this.chatId}`
+                    }, payload => {
+                        // Solo renderizar si es un mensaje del barbero (evitar duplicados del propio cliente)
+                        if (payload.new.sender_type === 'barber') {
+                            // Ocultar indicador de escritura si estaba visible ANTES de mostrar el mensaje
+                             if (typingIndicatorElement) typingIndicatorElement.style.display = 'none';
+                            this.renderMessage(payload.new, true); // Renderizar y hacer scroll
                         }
-                    ).subscribe();
+                    })
+                    // --- NUEVO: Escuchar eventos broadcast ---
+                    .on('broadcast', { event: 'typing' }, (payload) => {
+                        if (payload.sender === 'barber' && typingIndicatorElement) {
+                            typingIndicatorElement.style.display = 'flex'; // Mostrar indicador
+                            this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight; // Scroll para verlo
+                        }
+                    })
+                    .on('broadcast', { event: 'stopped-typing' }, (payload) => {
+                        if (payload.sender === 'barber' && typingIndicatorElement) {
+                            typingIndicatorElement.style.display = 'none'; // Ocultar indicador
+                        }
+                    })
+                    // --- FIN NUEVO ---
+                    .subscribe((status) => {
+                        if (status === 'SUBSCRIBED') {
+                            console.log(`Conectado al canal de chat: chat_${this.chatId}`);
+                        } else if (status === 'CHANNEL_ERROR') {
+                             console.error(`Error en canal de chat: chat_${this.chatId}`);
+                             this.addBotMessage('<div class="bot-card"><p>❌ Error de conexión al chat en vivo.</p></div>');
+                        }
+                    });
             }
 
+
             async sendRealtimeMessage(text) {
-                const payload = { chat_id: this.chatId, sender_id: this.clientProfile.id, sender_type: 'client', content: text };
-                this.renderMessage({ ...payload });
-                await supabase.from('messages').insert(payload);
+                 if (!this.chatId || !this.clientProfile || !this.barberData) {
+                    console.error("Faltan datos para enviar mensaje en tiempo real.");
+                    return;
+                 }
+                const payload = { 
+                    chat_id: this.chatId, 
+                    client_id: this.clientProfile.id, // ID del cliente
+                    barber_id: this.barberData.id,   // ID del barbero (negocio)
+                    sender_type: 'client',       // Quién envía
+                    content: text 
+                };
+                
+                // Optimistic UI update: Mostrar el mensaje inmediatamente
+                this.renderMessage({ 
+                    content: text, 
+                    sender_type: 'client', 
+                    created_at: new Date().toISOString() // Hora actual
+                }, true); // Renderizar y hacer scroll
+
+                // Enviar a Supabase
+                const { error } = await supabase.from('messages').insert(payload);
+                
+                if (error) {
+                    console.error("Error sending realtime message:", error);
+                    // Opcional: Mostrar un indicador de error en el mensaje fallido
+                    this.addBotMessage(`<div class="bot-card" style="border-left: 4px solid #F44336;"><p>❌ Error al enviar mensaje.</p></div>`);
+                }
             }
+
 
             addMessage(text, sender) { this.renderMessage({ text, sender, time: new Date() }); }
             addUserMessage(text) { this.addMessage(text, 'user'); }
@@ -1298,29 +1892,97 @@
             
             renderMessage(message, isNew = true) {
                 const messageDiv = document.createElement('div');
-                let senderClass = 'bot';
-                if (message.sender === 'user' || message.sender_type === 'client') senderClass = 'user';
+                let senderClass = 'bot'; // Por defecto es del sistema/bot
+                
+                 // Determinar quién envió basado en sender_type o sender
+                 if (message.sender === 'user' || message.sender_type === 'client') {
+                     senderClass = 'user';
+                 } else if (message.sender_type === 'barber') {
+                     senderClass = 'bot'; // Mensajes del barbero se muestran como 'bot'
+                 } else if (message.sender === 'bot') {
+                      senderClass = 'bot'; // Mensajes del bot/sistema
+                 }
+
                 messageDiv.className = `message ${senderClass}`;
-                const content = message.text || message.content;
-                const time = new Date(message.time || message.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                messageDiv.innerHTML = `<div class="message-content">${content}</div><div class="message-time">${time}</div>`;
-                this.messagesContainer.appendChild(messageDiv);
-                if (isNew) this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+                
+                // Usar 'content' si existe (de DB), sino 'text' (de UI optimista o bot)
+                const contentHTML = message.content || message.text; 
+                
+                 // Formatear hora
+                let timeString = 'Ahora';
+                try {
+                     const messageTime = new Date(message.created_at || message.time || Date.now());
+                     // Validar si la fecha es válida
+                     if (!isNaN(messageTime.getTime())) {
+                         timeString = messageTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                     }
+                 } catch (e) { console.warn("Error parsing message time:", e); }
+
+                // Construir HTML interno del mensaje
+                messageDiv.innerHTML = `<div class="message-content">${contentHTML}</div><div class="message-time">${timeString}</div>`;
+                
+                // Añadir al contenedor
+                 // Si el indicador de escritura está presente, insertar antes de él
+                 const typingIndicator = document.getElementById('barber-typing-indicator');
+                 if (typingIndicator && typingIndicator.parentNode === this.messagesContainer) {
+                     this.messagesContainer.insertBefore(messageDiv, typingIndicator);
+                 } else {
+                     this.messagesContainer.appendChild(messageDiv);
+                 }
+
+                // Scroll si es un mensaje nuevo O si el usuario está cerca del final
+                 if (isNew) {
+                    // Hacer scroll suavemente si es posible
+                     this.messagesContainer.scrollTo({
+                         top: this.messagesContainer.scrollHeight,
+                         behavior: 'smooth'
+                     });
+                 }
             }
 
-            showTyping() { if (this.isTyping) return; this.isTyping = true; const typingDiv = document.createElement('div'); typingDiv.className = 'message bot'; typingDiv.id = 'typing-indicator'; typingDiv.innerHTML = `<div class="message-content"><div class="typing"><span></span><span></span><span></span></div></div>`; this.messagesContainer.appendChild(typingDiv); this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight; }
-            hideTyping() { this.isTyping = false; const indicator = document.getElementById('typing-indicator'); if (indicator) indicator.remove(); }
-        }
+
+            showTyping() { 
+                if (this.isTyping) return; 
+                this.isTyping = true; 
+                const typingDiv = document.createElement('div'); 
+                typingDiv.className = 'message bot'; // Mostrar como si fuera del bot
+                typingDiv.id = 'typing-indicator'; // ID para poder quitarlo
+                // Usar la clase .typing dentro del message-content
+                typingDiv.innerHTML = `<div class="message-content"><div class="typing"><span></span><span></span><span></span></div></div>`; 
+                
+                // Insertar antes del indicador de escritura del barbero si existe
+                const barberIndicator = document.getElementById('barber-typing-indicator');
+                if (barberIndicator && barberIndicator.parentNode === this.messagesContainer) {
+                    this.messagesContainer.insertBefore(typingDiv, barberIndicator);
+                } else {
+                    this.messagesContainer.appendChild(typingDiv); 
+                }
+                
+                // Scroll para asegurarse de que sea visible
+                this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight; 
+            }
+
+            hideTyping() { 
+                this.isTyping = false; 
+                const indicator = document.getElementById('typing-indicator'); // Usar el ID correcto
+                if (indicator) {
+                    indicator.remove(); 
+                }
+            }
+        } // Fin de la clase ClientChatApp
 
         let app;
         document.addEventListener('DOMContentLoaded', () => {
             app = new ClientChatApp();
+             // Hacer 'app' global para los onclick
+             window.app = app; 
         });
     </script>
     <script>
+        // Registrar Service Worker para notificaciones push
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js').then(registration => {
+                navigator.serviceWorker.register('./sw.js').then(registration => { // Asegúrate que el path sea correcto
                     console.log('✅ ServiceWorker para Cliente registrado con éxito!');
                 }).catch(err => {
                     console.error('❌ Fallo en el registro del ServiceWorker para Cliente: ', err);
