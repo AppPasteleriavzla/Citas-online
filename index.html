@@ -1989,10 +1989,10 @@ async getClientNameById(clientId) {
         }
 
         async sendClientMessage(text) {
-            const message = {
+const message = {
                 chat_id: this.activeChat.id,
-                barber_id: this.barberProfile.id,
-                client_id: this.activeChat.clientId,
+                sender_id: this.barberProfile.id, // <-- Corregido de 'barber_id'
+                // No es necesario 'client_id', la tabla no lo tiene
                 content: text,
                 sender_type: 'barber'
             };
