@@ -1,4 +1,4 @@
-q<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -140,10 +140,10 @@ q<!DOCTYPE html>
     .command-button.cancel { background-color: #F44336; color: white; }
     .command-button.return { background-color: #444; color: #A0A0A0; }
 
-    .schedule-selector, .qr-form { display: flex; flex-direction: column; gap: 12px; }
-    .schedule-row, .qr-form-row { display: flex; align-items: center; gap: 10px; }
-    .schedule-row label, .qr-form-row label { font-weight: 500; color: #E0E0E0; flex-basis: 100px; }
-    .schedule-row select, .qr-form-row input, .qr-form-row select { 
+    .schedule-selector { display: flex; flex-direction: column; gap: 12px; }
+    .schedule-row { display: flex; align-items: center; gap: 10px; }
+    .schedule-row label { font-weight: 500; color: #E0E0E0; flex-basis: 100px; }
+    .schedule-row select { 
         flex-grow: 1; 
         padding: 8px; 
         border: 1px solid #444; 
@@ -152,6 +152,42 @@ q<!DOCTYPE html>
         border-radius: 6px; 
         font-size: 1em; 
     }
+
+    /* --- INICIO DE LA CORRECCIÓN VISUAL QR --- */
+    .qr-form {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        width: 100%;
+    }
+    
+    .qr-form-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+    }
+    
+    .qr-form-row label {
+        font-weight: 500;
+        color: #E0E0E0;
+        flex: 0 0 120px; /* Ancho fijo para las etiquetas */
+        text-align: right;
+    }
+    
+    .qr-form-row input, 
+    .qr-form-row select {
+        flex: 1;
+        padding: 10px 12px;
+        border: 1px solid #444;
+        background-color: #121212;
+        color: #E0E0E0;
+        border-radius: 6px;
+        font-size: 1em;
+        min-width: 0; /* Permite que se reduzca */
+    }
+    /* --- FIN DE LA CORRECCIÓN VISUAL QR --- */
+
     .schedule-actions { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .view { display: none; flex: 1; flex-direction: column; min-height: 0; }
     .view.active { display: flex; }
@@ -185,7 +221,26 @@ q<!DOCTYPE html>
     }
     .notification-badge.visible { display: flex; animation: pulse-badge 2s infinite; }
     @keyframes pulse-badge { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(244, 67, 54, 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(244, 67, 54, 0); } }
-    #qrcode-display { display: flex; justify-content: center; align-items: center; padding: 20px; background: white; border-radius: 8px; }
+    
+    /* --- INICIO DE LA CORRECCIÓN VISUAL QR (display) --- */
+    #qrcode-display {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 15px;
+        background: white;
+        border-radius: 8px;
+        max-width: 100%;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+    
+    #qrcode-display img {
+        max-width: 100%;
+        height: auto;
+        display: block;
+    }
+    /* --- FIN DE LA CORRECCIÓN VISUAL QR (display) --- */
 
     .profile-avatar-wrapper { display: flex; justify-content: center; margin-bottom: 16px; }
     .profile-avatar {
@@ -326,6 +381,28 @@ q<!DOCTYPE html>
             });
             this.profilePicInput.addEventListener('change', (event) => this.uploadProfilePicture(event));
             await this.checkAuthState();
+        }
+        
+async getClientNameById(clientId) {
+            if (!clientId) return null;
+            try {
+                // Hacemos una consulta rápida a la tabla de clientes
+                const { data, error } = await supabase
+                    .from('clients')
+                    .select('first_name, last_name')
+                    .eq('id', clientId)
+                    .single();
+                
+                if (error) {
+                    console.error("Error fetching client name:", error);
+                    return null;
+                }
+                // Devolvemos el nombre completo
+                return data ? `${data.first_name} ${data.last_name}` : null;
+            } catch (e) {
+                console.error(e);
+                return null;
+            }
         }
 
         capitalizeName(name) {
@@ -1276,6 +1353,7 @@ q<!DOCTYPE html>
                     <select id="qr-barber">${options}</select>
                 </div>`;
             }
+            // --- HTML CORREGIDO CON LAS CLASES CSS ---
             const formHTML = `
             <div class="bot-card">
                 <h3>Generar Cobro QR</h3>
@@ -1283,7 +1361,7 @@ q<!DOCTYPE html>
                     ${barberSelectorHTML}
                     <div class="qr-form-row">
                         <label for="qr-amount">Monto (Bs.):</label>
-                        <input type="number" id="qr-amount" placeholder="Ej: 5.00">
+                        <input type="number" id="qr-amount" placeholder="Ej: 5.00" min="0" step="0.01">
                     </div>
                     <div class="qr-form-row">
                         <label for="qr-desc">Descripción:</label>
@@ -1305,6 +1383,9 @@ q<!DOCTYPE html>
             const performer = barberSelect ? barberSelect.value : this.barberProfile.first_name;
             if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
                 alert("Por favor, introduce un monto válido.");
+                // Habilitamos los botones de nuevo si falla la validación
+                document.querySelector('.command-button[onclick="app.generatePaymentQR()"]').disabled = false;
+                document.querySelector('.command-button[data-command="/finanzas"]').disabled = false;
                 return;
             }
             const paymentData = {
@@ -1316,6 +1397,7 @@ q<!DOCTYPE html>
             const qr = qrcode(0, 'M');
             qr.addData(JSON.stringify(paymentData));
             qr.make();
+            // --- CONTENEDOR QR CORREGIDO ---
             const qrCodeHTML = `
             <div class="bot-card">
                 <h3>Muestra este QR al cliente</h3>
@@ -1763,9 +1845,9 @@ q<!DOCTYPE html>
                 })
                 .subscribe();
         }
-
         async subscribeToTransactions() {
             if (this.transactionsSubscription || !this.barberProfile) return;
+            
             this.transactionsSubscription = supabase
                 .channel(`barber_transactions_${this.barberProfile.id}`)
                 .on('postgres_changes', {
@@ -1774,81 +1856,174 @@ q<!DOCTYPE html>
                     table: 'transactions',
                     filter: `barber_id=eq.${this.barberProfile.id}`
                 }, async (payload) => {
+                    
+                    // --- Esta es la lógica que ya tenías ---
                     this.newTransactionsCount++;
                     this.updateBadges();
-                    await this.refreshProfileFromDB();
-                    if (document.querySelector('[data-command="/finanzas"]')) {
+                    await this.refreshProfileFromDB(); // Actualiza el saldo
+                    
+                    const newTransaction = payload.new;
+
+                    // --- INICIO DE LA NUEVA LÓGICA ---
+
+                    // 1. Buscamos si la tarjeta del QR está visible en el chat
+                    const qrDisplayElement = document.getElementById('qrcode-display');
+                    
+                    if (qrDisplayElement) {
+                        // 2. Si está visible, encontramos su tarjeta contenedora
+                        const qrCard = qrDisplayElement.closest('.bot-card');
+                        if (qrCard) {
+                            
+                            // 3. Obtenemos el nombre del cliente
+                            const clientName = (await this.getClientNameById(newTransaction.client_id)) || 'un cliente';
+
+                            // 4. Reemplazamos el contenido de la tarjeta
+                            qrCard.innerHTML = `
+                                <h3>✅ ¡Pago Confirmado!</h3>
+                                <p>Has recibido un pago de <strong>${newTransaction.amount} Bs.</strong> por "${newTransaction.description}" de <strong>${clientName}</strong>.</p>
+                                <p>Tu saldo ha sido actualizado.</p>
+                                <div class="command-buttons-container">
+                                    <button class="command-button" data-command="/finanzas">Ver Finanzas</button>
+                                    <button class="command-button return full-width" data-command="menu">↩️ Volver al Menú</button>
+                                </div>
+                            `;
+                            // Reactivamos los botones por si acaso
+                            qrCard.querySelectorAll('.command-button').forEach(btn => btn.disabled = false);
+                        }
+                    } 
+                    // 5. Si no estamos viendo el QR, pero sí el menú de finanzas...
+                    else if (document.querySelector('[data-command="/finanzas"]')) {
+                         // Esta es la lógica que ya tenías
                          this.addBotMessage(`<div class="bot-card" style="border-left: 4px solid #28a745;"><p><strong>¡Nuevo pago recibido!</strong> Tu saldo ha sido actualizado.</p></div>`);
                     }
+                    
+                    // --- FIN DE LA NUEVA LÓGICA ---
                 })
                 .subscribe();
         }
+
         
         async showClientChats() { 
-            const { data: chats, error } = await supabase.from('chats').select(`id, clients (id, first_name, last_name)`).eq('barber_id', this.barberProfile.id); 
-            if (error) { console.error(error); return; } 
+            this.switchView('clientChatsView');
+            const { data: chats, error } = await supabase
+                .from('chats')
+                .select(`
+                    id,
+                    clients (id, first_name, last_name)
+                `)
+                .eq('barber_id', this.barberProfile.id); 
+
+            if (error) { 
+                console.error("Error fetching chats:", error); 
+                this.clientChatsList.innerHTML = '<li>Error al cargar los chats.</li>';
+                return; 
+            } 
+            
             this.clientChatsList.innerHTML = ''; 
+            
             if (chats.length === 0) { 
                 this.clientChatsList.innerHTML = '<li>Aún no tienes ninguna conversación. Cuando un cliente te contacte, aparecerá aquí.</li>'; 
-            } else { 
-                chats.forEach(chat => { 
-                    const client = chat.clients; 
-                    const clientName = `${client.first_name} ${client.last_name}`; 
-                    const listItem = document.createElement('li'); 
-                    listItem.dataset.chatId = chat.id; listItem.dataset.clientId = client.id; 
-                    listItem.dataset.clientName = clientName; 
-                    const isUnread = this.unreadCounts[chat.id] > 0;
-                    listItem.innerHTML = `<div class="avatar">${clientName.charAt(0)}</div><div class="chat-info"><div class="chat-name">${clientName}</div></div><div class="unread-indicator ${isUnread ? 'visible' : ''}" id="unread-${chat.id}"></div>`; 
-                    listItem.addEventListener('click', () => this.openChat(chat.id, client.id, clientName)); 
-                    this.clientChatsList.appendChild(listItem); 
-                }); 
-            } 
-            this.switchView('clientChatsView'); 
+                return;
+            }
+
+            chats.forEach(chat => { 
+                if (!chat.clients) return; // Skip chat if client data is missing
+                
+                const clientName = `${chat.clients.first_name} ${chat.clients.last_name}`;
+                const initial = chat.clients.first_name ? chat.clients.first_name.charAt(0).toUpperCase() : '?';
+                const isUnread = (this.unreadCounts[chat.id] || 0) > 0;
+
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <div class="avatar">${initial}</div>
+                    <div class="chat-info">
+                        <div class="chat-name">${clientName}</div>
+                    </div>
+                    <span class="unread-indicator ${isUnread ? 'visible' : ''}" id="unread-${chat.id}"></span>
+                `;
+                li.addEventListener('click', () => this.openChat(chat.id, clientName, chat.clients.id));
+                this.clientChatsList.appendChild(li);
+            }); 
         }
 
-        async openChat(chatId, clientId, clientName) { 
+        async openChat(chatId, clientName, clientId) {
+            this.activeChat = { id: chatId, clientName, clientId };
+            this.switchView('singleChatView');
+            this.singleChatMessages.innerHTML = ''; // Clear previous messages
+            
+            // Mark messages as read
             if (this.unreadCounts[chatId]) {
                 delete this.unreadCounts[chatId];
                 this.updateBadges();
             }
-            const indicator = document.getElementById(`unread-${chatId}`); 
-            if (indicator) indicator.classList.remove('visible'); 
-            
-            this.activeChat = { id: chatId, clientName, clientId }; 
-            this.switchView('singleChatView'); 
-            this.singleChatMessages.innerHTML = 'Cargando mensajes...'; 
-            const { data: messages, error } = await supabase.from('messages').select('*').eq('chat_id', chatId).order('created_at', { ascending: true }); 
-            this.singleChatMessages.innerHTML = '';
-            if (messages) {
-                messages.forEach(msg => this.renderMessage(msg, this.singleChatMessages, false));
-                this.singleChatMessages.scrollTop = this.singleChatMessages.scrollHeight;
-            }
-            if(this.chatSubscription) this.chatSubscription.unsubscribe();
-            this.chatSubscription = supabase.channel(`chat-room-${chatId}`)
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` }, payload => {
-                    if(payload.new.sender_type === 'client') {
-                        this.renderMessage(payload.new, this.singleChatMessages);
-                    }
-                }).subscribe();
-        }
-        
-        async sendClientMessage(text) {
-            const payload = {
-                chat_id: this.activeChat.id,
-                sender_id: this.currentUser.id,
-                sender_type: 'barber',
-                content: text
-            };
-            this.renderMessage({ ...payload, sender: 'user' }, this.singleChatMessages);
-            await supabase.from('messages').insert(payload);
-        }
-    }
 
+            // Fetch chat history
+            const { data: messages, error } = await supabase
+                .from('messages')
+                .select('*')
+                .eq('chat_id', chatId)
+                .order('created_at', { ascending: true });
+
+            if (error) {
+                console.error("Error fetching messages:", error);
+                this.singleChatMessages.innerHTML = '<li>Error al cargar mensajes.</li>';
+                return;
+            }
+
+            messages.forEach(msg => this.renderMessage(msg, this.singleChatMessages, false));
+            this.singleChatMessages.scrollTop = this.singleChatMessages.scrollHeight;
+
+            // Subscribe to new messages for this chat only
+            if (this.chatSubscription) { this.chatSubscription.unsubscribe(); }
+            this.chatSubscription = supabase
+                .channel(`chat_${chatId}`)
+                .on('postgres_changes', { 
+                    event: 'INSERT', 
+                    schema: 'public', 
+                    table: 'messages', 
+                    filter: `chat_id=eq.${chatId}` 
+                }, payload => {
+                    this.renderMessage(payload.new, this.singleChatMessages, true);
+                })
+                .subscribe();
+        }
+
+        async sendClientMessage(text) {
+            const message = {
+                chat_id: this.activeChat.id,
+                barber_id: this.barberProfile.id,
+                client_id: this.activeChat.clientId,
+                content: text,
+                sender_type: 'barber'
+            };
+
+            // Optimistic UI update
+            this.renderMessage({
+                text: text,
+                sender_type: 'barber',
+                time: new Date()
+            }, this.singleChatMessages, true);
+
+            const { error } = await supabase.from('messages').insert(message);
+            if (error) {
+                console.error("Error sending message:", error);
+                this.renderMessage({
+                    text: 'Error al enviar ❌',
+                    sender_type: 'bot', // Show as a system error
+                    time: new Date()
+                }, this.singleChatMessages, true);
+            }
+        }
+
+    } // Fin de la clase ChatApp
+
+    // --- Global app instance ---
     let app;
     document.addEventListener('DOMContentLoaded', () => {
         app = new ChatApp();
+        // Hacemos que 'app' sea accesible globalmente para los clics en línea
+        window.app = app;
     });
 </script>
 </body>
 </html>
-
