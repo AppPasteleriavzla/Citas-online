@@ -413,7 +413,31 @@
             await this.checkAuthState();
         }
         
-async getClientNameById(clientId) {
+        /**
+         * INICIO: Nueva función para formatear precios según la moneda del perfil.
+         */
+        formatCurrency(amount, code) {
+            // Usa un código específico si se pasa, o el del perfil, o 'USD' como último recurso
+            const currencyCode = code || this.barberProfile?.currency_code || 'USD';
+            const numAmount = parseFloat(amount || 0).toFixed(2);
+            
+            // Usamos los formatos que pediste
+            switch(currencyCode.toUpperCase()) {
+                case 'USD': // Dólar Americano
+                    return `$${numAmount}`;
+                case 'VES': // Bolívar Venezolano
+                    return `${numAmount} Bs.`;
+                case 'COP': // Peso Colombiano
+                    return `$${numAmount} COP`;
+                case 'PEN': // Sol Peruano
+                    return `S/${numAmount}`;
+                default:    // Fallback por si acaso
+                    return `$${numAmount}`;
+            }
+        }
+        // FIN: Nueva función
+
+        async getClientNameById(clientId) {
             if (!clientId) return null;
             try {
                 // Hacemos una consulta rápida a la tabla de clientes
@@ -617,7 +641,7 @@ async getClientNameById(clientId) {
             const dayToConfirm = button.dataset.dayConfirm;
             if (command) {
                 // Si el botón es el de editar, no mostramos el mensaje del usuario
-                if(command !== '/editar_shop_name') {
+                if(command !== '/editar_shop_name' && command !== '/editar_moneda') {
                     this.addUserMessage(button.textContent.trim());
                 }
                 if (command.startsWith('check_availability:')) {
@@ -705,7 +729,6 @@ async getClientNameById(clientId) {
                 case 'servicio_add_price':
                     await this.addService(this.userData.tempServiceName, input);
                     break;
-// --- INICIO DE LA CORRECCIÓN ---
                 case 'editing_service':
                     await this.handleServiceEditFlow(input, originalText);
                     break;
@@ -715,7 +738,6 @@ async getClientNameById(clientId) {
                 case 'editing_service_price':
                     await this.updateService('price', input);
                     break;
-                // --- FIN DE LA CORRECCIÓN ---
                 case 'adding_barber_name':
                     await this.addNewBarberToJSON(originalText.trim());
                     break;
@@ -725,14 +747,38 @@ async getClientNameById(clientId) {
                 case 'authenticated':
                     await this.handleAuthenticatedCommand(input);
                     break;
+                // --- INICIO: LÓGICA DE APROBACIÓN ---
+                case 'pending_approval':
+                    if (input === '/cerrar') {
+                        await this.logout();
+                    }
+                    // Si no es /cerrar, no hacemos nada. El usuario está bloqueado.
+                    break;
+                // --- FIN: LÓGICA DE APROBACIÓN ---
                 default:
                     this.addBotMessage('<div class="bot-card"><p>Vaya, no he entendido eso. ¿Podrías intentarlo de nuevo o usar uno de los botones del menú principal?</p></div>');
             }
         }
+async handleAuthenticatedCommand(input) {
+            
+            // --- INICIO: CORRECCIÓN DE LÓGICA ---
+            // Primero, intentamos separar por ':', que usamos en los botones
+            let command, argString;
+            if (input.includes(':')) {
+                const parts = input.split(':');
+                command = parts[0];       // ej: "/set_currency"
+                argString = parts[1] || ''; // ej: "pen"
+            } else {
+                // Si no hay ':', usamos la lógica anterior de separar por espacio
+                const parts = input.split(' ');
+                command = parts[0];
+                argString = parts.slice(1).join(' ');
+            }
+            // --- FIN: CORRECCIÓN DE LÓGICA ---
 
-        async handleAuthenticatedCommand(input) {
-            const [command, ...args] = input.split(' ');
-            const argString = args.join(' ');
+            // const [command, ...args] = input.split(' '); // <-- REEMPLAZAMOS ESTO
+            // const argString = args.join(' '); // <-- Y ESTO
+
             switch(command) {
                 case '/miperfil': await this.showBarberProfile(); break;
                 case '/citas': await this.showAllBookings(); break;
@@ -745,6 +791,17 @@ async getClientNameById(clientId) {
                     this.addBotMessage('<div class="bot-card"><p>Introduce el nuevo nombre para tu barbería:</p></div>');
                     this.currentFlow = 'editing_shop_name';
                     break;
+                
+                // --- INICIO: MANEJO DE MONEDA ---
+                case '/editar_moneda':
+                    this.promptCurrencySelection();
+                    break;
+                case '/set_currency': // <-- ¡Ahora sí va a funcionar!
+                    const newCode = argString.toUpperCase();
+                    await this.updateCurrency(newCode);
+                    break;
+                // --- FIN: MANEJO DE MONEDA ---
+
                 case 'menu': case 'menú': this.showMainMenu(); break;
                 case '/suscribirse_notificaciones': await this.registerServiceWorker(); break;
                 case '/horario':
@@ -777,8 +834,9 @@ async getClientNameById(clientId) {
                     else this.showServicesMenu();
                     break;
                 case '/horario-cerrado':
-                    const dayKey = args[0];
-                    if (dayKey) await this.setAvailability(dayKey, []);
+                    // --- CORRECCIÓN DE BUG 2 ---
+                    // 'argString' contendrá el 'dayKey' (ej: 'mon')
+                    if (argString) await this.setAvailability(argString, []);
                     break;
                 default:
                     this.addBotMessage('<div class="bot-card"><p>Lo siento, no reconozco ese comando. Aquí tienes las opciones principales.</p></div>');
@@ -801,6 +859,76 @@ async getClientNameById(clientId) {
             </div></div>`;
             this.addBotMessage(menuHTML);
         }
+
+        // --- INICIO: NUEVA FUNCIÓN DE APROBACIÓN ---
+        showPendingApproval() {
+            this.messagesContainer.innerHTML = ''; // Limpiar la pantalla
+            const name = this.barberProfile ? this.barberProfile.first_name : 'barbero';
+            
+            const pendingHTML = `
+            <div class="bot-card">
+                <h3>⏳ Cuenta Pendiente de Aprobación</h3>
+                <p>¡Gracias por registrarte, <strong>${name}</strong>!</p>
+                <p>Tu cuenta ha sido creada, pero necesita ser aprobada manualmente por un administrador. Recibiremos una notificación y la revisaremos pronto.</p>
+                <p>Por favor, ten paciencia. No necesitas hacer nada más.</p>
+                <div class="command-buttons-container" style="margin-top: 15px;">
+                    <button class="command-button full-width return" data-command="/cerrar">Cerrar Sesión</button>
+                </div>
+            </div>`;
+            
+            this.addBotMessage(pendingHTML);
+            
+            // Desactivamos la entrada de texto
+            this.messageInput.placeholder = "Cuenta pendiente de aprobación";
+            this.messageInput.disabled = true;
+            this.sendButton.disabled = true;
+            this.currentFlow = 'pending_approval'; // Estado de bloqueo
+        }
+        // --- FIN: NUEVA FUNCIÓN DE APROBACIÓN ---
+
+        // --- INICIO: NUEVAS FUNCIONES DE MONEDA ---
+        /**
+         * Muestra las opciones de moneda al barbero.
+         */
+        promptCurrencySelection() {
+            const menuHTML = `<div class="bot-card">
+                <h3>Selecciona tu moneda principal</h3>
+                <p>Esta será la moneda mostrada a tus clientes para servicios y pagos.</p>
+                <div class="command-buttons-container">
+                    <button class="command-button" data-command="/set_currency:USD">Dólar Americano ($)</button>
+                    <button class="command-button" data-command="/set_currency:VES">Bolívar Venezolano (Bs.)</button>
+                    <button class="command-button" data-command="/set_currency:COP">Peso Colombiano (COP)</button>
+                    <button class="command-button" data-command="/set_currency:PEN">Sol Peruano (S/)</button>
+                    <button class="command-button full-width return" data-command="/miperfil">Cancelar</button>
+                </div>
+            </div>`;
+            this.addBotMessage(menuHTML);
+        }
+
+        /**
+         * Actualiza la moneda en la base de datos y localmente.
+         */
+        async updateCurrency(newCode) {
+            this.showTyping();
+            const { data, error } = await supabase
+                .from('barbers')
+                .update({ currency_code: newCode })
+                .eq('user_id', this.currentUser.id)
+                .select()
+                .single();
+            this.hideTyping();
+            
+            if (error) {
+                console.error("Error updating currency:", error);
+                this.addBotMessage('<div class="bot-card"><p>❌ Hubo un error al actualizar la moneda.</p></div>');
+            } else {
+                this.barberProfile = data; // Actualiza el perfil local
+                this.addBotMessage(`<div class="bot-card"><p>✅ ¡Moneda actualizada a <strong>${newCode}</strong>!</p></div>`);
+            }
+            await this.showBarberProfile(); // Muestra el perfil actualizado
+        }
+        // --- FIN: NUEVAS FUNCIONES DE MONEDA ---
+
 
         showServicesMenu() {
             const title = this.barberProfile.is_team_account 
@@ -1015,7 +1143,15 @@ async getClientNameById(clientId) {
         
                     <li><span class="item-name">Tipo de Cuenta:</span><span class="item-detail">${accountType}</span></li>
                     <li><span class="item-name">Código Clientes:</span><span class="item-detail" style="font-weight: bold; color: #764ba2;">${profile.public_code}</span></li>
-                </ul>
+                    
+                    <li style="display: flex; align-items: center;">
+                        <span class="item-name">Moneda:</span>
+                        <span class="item-detail" style="margin-left: 1rem; text-align: left;">${profile.currency_code}</span>
+                        <button class="edit-icon-button" data-command="/editar_moneda" style="margin-left: auto;" title="Editar moneda">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"></path></svg>
+                        </button>
+                    </li>
+                    </ul>
                 <p class="helper-text">Tus clientes usan este código para conectar contigo.</p>
         
                 <div class="command-buttons-container" style="margin-top: 15px; grid-template-columns: 1fr 1fr;">
@@ -1175,7 +1311,8 @@ async getClientNameById(clientId) {
             let servicesOfBarber = (b.services || {})[barberName] || [];
             let s = '';
             if (servicesOfBarber.length > 0) {
-                s = servicesOfBarber.map(svc => `<li><span class="item-name">${svc.name}</span><span class="item-detail">$${svc.price}</span></li>`).join('');
+                // --- MODIFICACIÓN MONEDA ---
+                s = servicesOfBarber.map(svc => `<li><span class="item-name">${svc.name}</span><span class="item-detail">${this.formatCurrency(svc.price)}</span></li>`).join('');
             } else {
                 s = `<p><strong>${barberName}</strong> aún no tiene servicios asignados.</p>`;
             }
@@ -1221,8 +1358,9 @@ async getClientNameById(clientId) {
                 const clientName = b.clients ? `${b.clients.first_name} ${b.clients.last_name}` : 'Cliente';
                 const formattedDate = date.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
                 const formattedTime = date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                // --- MODIFICACIÓN MONEDA ---
                 return `<li>
-                    <span class="item-name">${b.service_name} con ${clientName}</span>
+                    <span class="item-name">${b.service_name} con ${clientName} (${this.formatCurrency(b.price, b.currency)})</span>
                     <span class="item-detail">${formattedDate} - ${formattedTime}</span>
                 </li>`;
             }).join('');
@@ -1385,9 +1523,10 @@ async getClientNameById(clientId) {
             this.hideTyping();
             let transactionsHTML = '<li><p>Aún no tienes transacciones.</p></li>';
             if (transactions && transactions.length > 0) {
+                // --- MODIFICACIÓN MONEDA ---
                 transactionsHTML = transactions.map(t => {
                     const date = new Date(t.created_at).toLocaleDateString();
-                    return `<li><span class="item-name">${t.description || 'Venta'} (${t.barber_name_performer})</span> <span class="item-detail" style="color: #28a745;">+${t.amount} Bs.</span></li>`;
+                    return `<li><span class="item-name">${t.description || 'Venta'} (${t.barber_name_performer})</span> <span class="item-detail" style="color: #28a745;">+${this.formatCurrency(t.amount, t.currency)}</span></li>`;
                 }).join('');
             }
             const financeCard = `
@@ -1395,7 +1534,7 @@ async getClientNameById(clientId) {
                 <h3>💰 Finanzas</h3>
                 <div class="stat-item" style="text-align: left; margin-bottom: 20px;">
                     <span class="stat-label">Tu Saldo Actual</span>
-                    <span class="stat-value" style="font-size: 2em;">${(this.barberProfile.balance || 0).toFixed(2)} Bs.</span>
+                    <span class="stat-value" style="font-size: 2em;">${this.formatCurrency(this.barberProfile.balance)}</span>
                 </div>
                 <h4>Últimas Transacciones</h4>
                 <ul>${transactionsHTML}</ul>
@@ -1419,12 +1558,16 @@ async getClientNameById(clientId) {
                     <select id="qr-barber" class="form-control">${options}</select>
                 </div>`;
             }
+            
+            // --- MODIFICACIÓN MONEDA ---
+            const currencyCode = this.barberProfile?.currency_code || 'USD';
+            
             const formHTML = `
             <div class="bot-card">
                 <h3>Generar Cobro QR</h3>
                 <div class="qr-form-container"> ${barberSelectorHTML}
                     <div class="form-group">
-                        <label for="qr-amount">Monto (Bs.):</label>
+                        <label for="qr-amount">Monto (${currencyCode}):</label>
                         <input type="number" id="qr-amount" class="form-control" placeholder="Ej: 5.00">
                     </div>
                     <div class="form-group">
@@ -1449,26 +1592,33 @@ async getClientNameById(clientId) {
                 alert("Por favor, introduce un monto válido.");
                 return;
             }
+
+            // --- INICIO MODIFICACIÓN MONEDA ---
             const paymentData = {
                 barber_id: this.barberProfile.id,
                 amount: parseFloat(amount).toFixed(2),
                 description: description || 'Servicio de Barbería',
-                performer: performer
+                performer: performer,
+                currency: this.barberProfile?.currency_code || 'USD' // <-- Se añade la moneda
             };
+            // --- FIN MODIFICACIÓN MONEDA ---
+
             const qr = qrcode(0, 'M');
             qr.addData(JSON.stringify(paymentData));
             qr.make();
+
+            // --- MODIFICACIÓN MONEDA (en el mensaje) ---
             const qrCodeHTML = `
             <div class="bot-card">
                 <h3>Muestra este QR al cliente</h3>
-                <p>El cliente debe escanearlo desde su app para registrar el pago de <strong>${paymentData.amount} Bs.</strong></p>
+                <p>El cliente debe escanearlo desde su app para registrar el pago de <strong>${this.formatCurrency(paymentData.amount)}</strong></p>
                 <div id="qrcode-display">${qr.createImgTag(6, 8)}</div>
                 <p class="helper-text">Esperando confirmación del cliente...</p>
                 <div class="command-buttons-container">
                     <button class="command-button return full-width" data-command="/finanzas">↩️ Volver a Finanzas</button>
                 </div>
             </div>`;
-            this.addUserMessage(`Generar QR por ${paymentData.amount} Bs.`);
+            this.addUserMessage(`Generar QR por ${this.formatCurrency(paymentData.amount)}`);
             this.addBotMessage(qrCodeHTML);
         }
 
@@ -1523,7 +1673,8 @@ async getClientNameById(clientId) {
             const buttonsHTML = servicesOfBarber.map(s => {
                 // Convertimos el objeto de servicio a un string JSON para pasarlo en el data-attribute
                 const serviceJSONString = JSON.stringify(s).replace(/"/g, "'"); // Usamos comillas simples
-                return `<button class="command-button" data-service-edit="${serviceJSONString}">${s.name} ($${s.price})</button>`;
+                // --- MODIFICACIÓN MONEDA ---
+                return `<button class="command-button" data-service-edit="${serviceJSONString}">${s.name} (${this.formatCurrency(s.price)})</button>`;
             }).join('');
 
             const menuHTML = `<div class="bot-card">
@@ -1547,8 +1698,9 @@ async getClientNameById(clientId) {
                 this.userData.tempService = service; // Guardamos el servicio que estamos editando
                 this.currentFlow = 'editing_service'; // Establecemos el nuevo flujo
 
+                // --- MODIFICACIÓN MONEDA ---
                 const menuHTML = `<div class="bot-card">
-                    <h3>Modificando: ${service.name} ($${service.price})</h3>
+                    <h3>Modificando: ${service.name} (${this.formatCurrency(service.price)})</h3>
                     <p>¿Qué te gustaría hacer?</p>
                     <div class="command-buttons-container">
                         <button class="command-button" data-command="/servicio_edit_name">✏️ Cambiar Nombre</button>
@@ -1707,25 +1859,52 @@ async getClientNameById(clientId) {
             await this.showAvailability();
         }
 
+        // --- INICIO: FUNCIÓN 'checkAuthState' MODIFICADA PARA APROBACIÓN ---
         async checkAuthState() { 
             this.showTyping(); 
             const { data: { session } } = await supabase.auth.getSession(); 
             this.hideTyping(); 
+            
             if (session && session.user) { 
                 this.currentUser = session.user; 
+                
+                // 1. Obtenemos el perfil del barbero
                 const { data, error } = await supabase.from('barbers').select('*').eq('user_id', this.currentUser.id).single();
-                if(data) this.barberProfile = data;
-                const name = this.barberProfile.first_name || this.currentUser.email; 
-                this.addBotMessage(`<div class="bot-card"><p>¡Qué bueno verte de nuevo, <strong>${name}</strong>! 👋</p><p>Estoy listo para ayudarte a organizar tu día.</p></div>`); 
-                this.showMainMenu(); 
-                this.currentFlow = 'authenticated'; 
-                this.subscribeToNotifications(); 
-                this.subscribeToBookings();
-                this.subscribeToTransactions();
+                
+                if (data) {
+                    this.barberProfile = data;
+
+                    // 2. --- ¡AQUÍ ESTÁ LA LÓGICA DE APROBACIÓN! ---
+                    if (!this.barberProfile.is_approved) {
+                        this.showPendingApproval(); // Muestra la pantalla de "pendiente"
+                        return; // Detiene la ejecución. No puede continuar.
+                    }
+                    // --- FIN DE LA LÓGICA DE APROBACIÓN ---
+
+                    // 3. Si SÍ está aprobado, continúa normalmente:
+                    const name = this.barberProfile.first_name || this.currentUser.email; 
+                    this.addBotMessage(`<div class="bot-card"><p>¡Qué bueno verte de nuevo, <strong>${name}</strong>! 👋</p><p>Estoy listo para ayudarte a organizar tu día.</p></div>`); 
+                    this.showMainMenu(); 
+                    this.currentFlow = 'authenticated'; 
+                    this.messageInput.disabled = false; // Asegurarse de que el input esté habilitado
+                    this.sendButton.disabled = false;
+                    this.messageInput.placeholder = "Escribe un mensaje...";
+                    
+                    this.subscribeToNotifications(); 
+                    this.subscribeToBookings();
+                    this.subscribeToTransactions();
+                
+                } else if (error) {
+                    // Esto puede pasar si el usuario se registró (auth.users) pero el perfil (barbers) falló al crearse.
+                    this.addBotMessage('<div class="bot-card"><p>❌ Error crítico: No pudimos encontrar tu perfil de barbero. Contacta a soporte.</p></div>');
+                    await this.logout();
+                }
+
             } else { 
                 this.startWelcomeFlow(); 
             } 
         }
+        // --- FIN: FUNCIÓN 'checkAuthState' MODIFICADA ---
 
         startWelcomeFlow() { this.addBotMessage(`<div class="bot-card"><h3>¡Bienvenido a BarberConnect! 💈</h3><p>Soy tu asistente virtual, y estoy aquí para ayudarte a gestionar tu barbería de forma sencilla.</p><p>Para empezar, ¿eres un <strong>barbero</strong>?</p></div>`); this.currentFlow = 'welcome'; }
         
@@ -1804,21 +1983,35 @@ async getClientNameById(clientId) {
             }
             if (data.user) {
                 this.currentUser = data.user;
-                await this.createBarberProfile(data.user.id);
-                this.addBotMessage('<div class="bot-card"><h3>¡Cuenta Creada! 🚀</h3><p>Tu registro fue un éxito. Te he enviado un correo de confirmación. Una vez que lo verifiques, tendrás acceso a todo.</p></div>');
-                this.showMainMenu();
-                this.currentFlow = 'authenticated';
+                // --- INICIO: MODIFICACIÓN DE APROBACIÓN ---
+                // Pasamos el email a createBarberProfile
+                await this.createBarberProfile(data.user.id, this.userData.email);
+                
+                // Obtenemos el perfil recién creado para mostrar la pantalla de pendiente
+                const { data: profileData } = await supabase.from('barbers').select('*').eq('user_id', this.currentUser.id).single();
+                if (profileData) {
+                    this.barberProfile = profileData;
+                }
+                
+                // Mostramos la pantalla de pendiente en lugar del menú principal
+                this.showPendingApproval();
+                // --- FIN: MODIFICACIÓN DE APROBACIÓN ---
             }
         }
         
-        async createBarberProfile(userId) {
+        // --- INICIO: FUNCIÓN 'createBarberProfile' MODIFICADA ---
+        async createBarberProfile(userId, email) {
             const code = Math.random().toString(36).substring(2, 8).toUpperCase();
             const barberName = this.capitalizeName(this.userData.firstName);
             const shopName = `Barbería de ${barberName}`;
             const initialAvailability = { [barberName]: {} };
             const initialServices = { [barberName]: [] };
+            
+            // Añadimos el email y 'is_approved: false' (aunque ya es el default)
+            // --- MODIFICACIÓN MONEDA: Se añade 'currency_code' ---
             await supabase.from('barbers').insert([{ 
                 user_id: userId, 
+                email: email, // Columna de email
                 first_name: barberName,
                 last_name: this.capitalizeName(this.userData.lastName),
                 barber_shop_name: shopName, 
@@ -1826,9 +2019,12 @@ async getClientNameById(clientId) {
                 availability: initialAvailability,
                 public_code: code,
                 is_team_account: false,
-                balance: 0
+                balance: 0,
+                is_approved: false, // Columna de aprobación
+                currency_code: 'USD' // <-- Moneda por defecto
             }]); 
         }
+        // --- FIN: FUNCIÓN 'createBarberProfile' MODIFICADA ---
 
         async loginUser(password) {
             this.showTyping();
@@ -1839,28 +2035,22 @@ async getClientNameById(clientId) {
             this.hideTyping();
             if (error) {
                 console.error("Error de inicio de sesión de Supabase:", error);
-                if (error.message && error.message.includes('Email not confirmed')) {
-                    this.addBotMessage(
-                        `<div class="bot-card" style="background-color: #ffffcc;">
-                            <p><strong>⚠️ Tu cuenta no ha sido confirmada.</strong></p>
-                            <p>Por favor, revisa tu bandeja de entrada (y la carpeta de spam) y haz clic en el enlace de confirmación que te enviamos al registrarte.</p>
-                        </div>`
-                    );
-                } else {
-                    this.addBotMessage(
-                        `<div class="bot-card">
-                            <p>❌ Usuario o contraseña incorrectos.</p>
-                            <small style="color: #666;">Si el problema persiste, asegúrate de que tus datos son correctos y que has confirmado tu correo electrónico.</small>
-                        </div>`
-                    );
-                }
+                
+                // (Ya no necesitamos la comprobación de 'Email not confirmed' porque la quitamos)
+                this.addBotMessage(
+                    `<div class="bot-card">
+                        <p>❌ Usuario o contraseña incorrectos.</p>
+                        <small style="color: #A0A0A0;">Por favor, inténtalo de nuevo.</small>
+                    </div>`
+                );
+
                 this.currentFlow = 'has_account';
                 setTimeout(() => this.handleAuthFlow('si'), 1500);
                 return;
             }
             this.currentUser = data.user;
             this.addBotMessage('<div class="bot-card"><p>✅ ¡Inicio de sesión exitoso!</p></div>');
-            this.checkAuthState();
+            await this.checkAuthState(); // 'checkAuthState' se encargará de aprobar o bloquear
         }
         
         async logout() { 
@@ -1869,7 +2059,15 @@ async getClientNameById(clientId) {
             if (this.bookingsSubscription) { this.bookingsSubscription.unsubscribe(); this.bookingsSubscription = null; } 
             if (this.chatSubscription) { this.chatSubscription.unsubscribe(); this.chatSubscription = null; } 
             if (this.transactionsSubscription) { this.transactionsSubscription.unsubscribe(); this.transactionsSubscription = null; }
-            this.currentUser = null; this.barberProfile = null; this.userData = {}; this.addBotMessage('<div class="bot-card"><p>¡Hasta pronto! Tu sesión se ha cerrado de forma segura. 👋</p></div>'); 
+            this.currentUser = null; this.barberProfile = null; this.userData = {}; 
+            
+            this.addBotMessage('<div class="bot-card"><p>¡Hasta pronto! Tu sesión se ha cerrado de forma segura. 👋</p></div>'); 
+            
+            // Habilitar la entrada de texto de nuevo para el flujo de bienvenida
+            this.messageInput.disabled = false;
+            this.sendButton.disabled = false;
+            this.messageInput.placeholder = "Escribe un mensaje...";
+
             setTimeout(() => { this.messagesContainer.innerHTML = ''; this.startWelcomeFlow(); }, 1500); 
         }
         
@@ -1938,9 +2136,10 @@ async getClientNameById(clientId) {
                             const clientName = (await this.getClientNameById(newTransaction.client_id)) || 'un cliente';
 
                             // 4. Reemplazamos el contenido de la tarjeta
+                            // --- MODIFICACIÓN MONEDA ---
                             qrCard.innerHTML = `
                                 <h3>✅ ¡Pago Confirmado!</h3>
-                                <p>Has recibido un pago de <strong>${newTransaction.amount} Bs.</strong> por "${newTransaction.description}" de <strong>${clientName}</strong>.</p>
+                                <p>Has recibido un pago de <strong>${this.formatCurrency(newTransaction.amount, newTransaction.currency)}</strong> por "${newTransaction.description}" de <strong>${clientName}</strong>.</p>
                                 <p>Tu saldo ha sido actualizado.</p>
                                 <div class="command-buttons-container">
                                     <button class="command-button" data-command="/finanzas">Ver Finanzas</button>
