@@ -309,6 +309,30 @@
                 await this.checkConnection();
             }
             
+            /**
+             * INICIO: Nueva función para formatear precios según la moneda del BARBERO.
+             */
+            formatCurrency(amount, code)  {
+                // Usa un código específico si se pasa, o el del perfil del BARBERO, o 'USD'
+                const  currencyCode = code ||  this.barberData?.currency_code ||  'USD' ;
+                const  numAmount =  parseFloat(amount ||  0 ).toFixed( 2 );
+                
+                // Usamos los formatos que pediste
+                switch (currencyCode.toUpperCase()) {
+                    case   'USD' :  // Dólar Americano
+                        return   `$${numAmount}` ;
+                    case   'VES' :  // Bolívar Venezolano
+                        return   `${numAmount} Bs.` ;
+                    case   'COP' :  // Peso Colombiano
+                        return   `$${numAmount} COP` ;
+                    case   'PEN' :  // Sol Peruano
+                        return   `S/${numAmount}` ;
+                    default :     // Fallback por si acaso
+                        return   `$${numAmount}` ;
+                }
+            }
+            // FIN: Nueva función
+
             // --- INICIO: LÓGICA PARA NOTIFICACIONES PUSH ---
             /**
              * Pide permiso al usuario para enviar notificaciones y lo suscribe.
@@ -548,7 +572,7 @@
                     const serviceName = input.split(':')[1];
                     const barberServices = this.barberData.services[this.bookingData.barberName] || [];
                     this.bookingData.service = barberServices.find(s => s.name === serviceName);
-                    this.addBotMessage(`<div class="bot-card"><p>Has seleccionado: <strong>${this.bookingData.service.name}</strong> ($${this.bookingData.service.price}).</p><p>Por favor, elige una fecha (p. ej., "hoy", "mañana" o "25/12"):</p>${this.mainMenuButton}</div>`);
+                    this.addBotMessage(`<div class="bot-card"><p>Has seleccionado: <strong>${this.bookingData.service.name}</strong> (${this.formatCurrency(this.bookingData.service.price)}).</p><p>Por favor, elige una fecha (p. ej., "hoy", "mañana" o "25/12"):</p>${this.mainMenuButton}</div>`);
                     this.currentFlow = 'booking_date';
                     return;
                 }
@@ -618,12 +642,13 @@
 
                     this.paymentDataToConfirm = paymentData;
 
+                    // --- INICIO: ACTUALIZACIÓN DE MONEDA (B.4) ---
                     const confirmationHTML = `
                     <div class="bot-card">
                         <h3>Confirmar Pago</h3>
                         <p>Estás a punto de registrar un pago para <strong>${this.barberData.barber_shop_name}</strong>.</p>
                         <ul>
-                            <li><strong>Monto:</strong> ${paymentData.amount} Bs.</li>
+                            <li><strong>Monto:</strong> ${this.formatCurrency(paymentData.amount, paymentData.currency)}</li>
                             <li><strong>Por:</strong> ${paymentData.description}</li>
                             <li><strong>Atendido por:</strong> ${paymentData.performer}</li>
                         </ul>
@@ -633,6 +658,7 @@
                             <button class="command-button cancel" data-command="menu">❌ Cancelar</button>
                         </div>
                     </div>`;
+                    // --- FIN: ACTUALIZACIÓN DE MONEDA (B.4) ---
                     this.addBotMessage(confirmationHTML);
 
                 } catch (error) {
@@ -647,7 +673,8 @@
                 this.addUserMessage("Sí, Confirmar Pago");
                 this.showTyping();
 
-                const { amount, description, performer } = this.paymentDataToConfirm;
+                // --- INICIO: ACTUALIZACIÓN DE MONEDA (C.2) ---
+                const { amount, description, performer, currency } = this.paymentDataToConfirm; // <-- Extraer 'currency'
 
                 const { error: transactionError } = await supabase
                     .from('transactions')
@@ -656,8 +683,10 @@
                         client_id: this.clientProfile.id,
                         amount: amount,
                         description: description,
-                        barber_name_performer: performer
+                        barber_name_performer: performer,
+                        currency: currency || 'USD'   // <-- AÑADIR ESTO
                     });
+                // --- FIN: ACTUALIZACIÓN DE MONEDA (C.2) ---
 
                 if (transactionError) {
                     this.hideTyping();
@@ -985,22 +1014,28 @@
                 finalTimestamp.setHours(parseInt(time, 10), 0, 0, 0);
                 this.bookingData.finalTimestamp = finalTimestamp;
                 
-                const confirmationHTML = `<div class="bot-card"><h3>Confirmar Reserva</h3><p>Por favor, revisa los detalles de tu cita:</p><ul><li><strong>Barbero:</strong> ${this.bookingData.barberName}</li><li><strong>Servicio:</strong> ${this.bookingData.service.name}</li><li><strong>Precio:</strong> $${this.bookingData.service.price}</li><li><strong>Fecha:</strong> ${finalTimestamp.toLocaleDateString()}</li><li><strong>Hora:</strong> ${finalTimestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</li></ul><div class="command-buttons-container"><button class="command-button confirm" data-command="confirmar_reserva">✅ Confirmar</button><button class="command-button cancel" data-command="cancelar_reserva">❌ Cancelar</button></div></div>`;
+                // --- INICIO: ACTUALIZACIÓN DE MONEDA (B.3) ---
+                const confirmationHTML = `<div class="bot-card"><h3>Confirmar Reserva</h3><p>Por favor, revisa los detalles de tu cita:</p><ul><li><strong>Barbero:</strong> ${this.bookingData.barberName}</li><li><strong>Servicio:</strong> ${this.bookingData.service.name}</li><li><strong>Precio:</strong> ${this.formatCurrency(this.bookingData.service.price)}</li><li><strong>Fecha:</strong> ${finalTimestamp.toLocaleDateString()}</li><li><strong>Hora:</strong> ${finalTimestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</li></ul><div class="command-buttons-container"><button class="command-button confirm" data-command="confirmar_reserva">✅ Confirmar</button><button class="command-button cancel" data-command="cancelar_reserva">❌ Cancelar</button></div></div>`;
+                // --- FIN: ACTUALIZACIÓN DE MONEDA (B.3) ---
                 this.addBotMessage(confirmationHTML);
                 this.currentFlow = 'booking_confirmation';
             }
             
             async confirmAndCreateBooking() {
                 this.showTyping();
+                
+                // --- INICIO: ACTUALIZACIÓN DE MONEDA (C.1) ---
                 const payload = { 
                     barber_id: this.barberData.id, 
                     client_id: this.clientProfile.id, 
                     service_name: this.bookingData.service.name, 
                     price: this.bookingData.service.price, 
+                    currency: this.barberData?.currency_code || 'USD', // <-- AÑADIDO
                     booking_date: this.bookingData.finalTimestamp.toISOString(), 
                     status: 'confirmed', 
                     barber_name: this.bookingData.barberName 
                 };
+                // --- FIN: ACTUALIZACIÓN DE MONEDA (C.1) ---
 
                 const { error } = await supabase.from('bookings').insert(payload);
                 
@@ -1205,7 +1240,9 @@
                     return;
                 }
 
-                const buttonsHTML = barberServices.map(s => `<button class="command-button" data-command="reservar_servicio:${s.name}">${s.name} ($${s.price})</button>`).join('');
+                // --- INICIO: ACTUALIZACIÓN DE MONEDA (B.2) ---
+                const buttonsHTML = barberServices.map(s => `<button class="command-button" data-command="reservar_servicio:${s.name}">${s.name} (${this.formatCurrency(s.price)})</button>`).join('');
+                // --- FIN: ACTUALIZACIÓN DE MONEDA (B.2) ---
                 this.addBotMessage(`<div class="bot-card"><h3>Selecciona un servicio con ${this.bookingData.barberName}</h3><div class="command-buttons-container">${buttonsHTML}${this.mainMenuButton}</div></div>`);
                 this.currentFlow = 'booking_service';
             }
@@ -1217,7 +1254,9 @@
                     Object.values(this.barberData.services).forEach(serviceList => {
                         allServices = allServices.concat(serviceList);
                     });
-                    servicesHTML = allServices.map(svc => `<li><span>${svc.name}</span><strong>$${svc.price}</strong></li>`).join('');
+                    // --- INICIO: ACTUALIZACIÓN DE MONEDA (B.1) ---
+                    servicesHTML = allServices.map(svc => `<li><span>${svc.name}</span><strong>${this.formatCurrency(svc.price)}</strong></li>`).join('');
+                    // --- FIN: ACTUALIZACIÓN DE MONEDA (B.1) ---
                 }
                 this.addBotMessage(`<div class="bot-card"><h3>🛠️ Servicios Disponibles</h3><ul>${servicesHTML}</ul>${this.mainMenuButton}</div>`);
             }
