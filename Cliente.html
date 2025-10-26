@@ -225,6 +225,46 @@
     }
     .bot-card .item-name { font-weight: 500; color: #E0E0E0; }
     .bot-card .item-detail { color: #A0A0A0; font-size: 0.9em; text-align: right; }
+
+    /* --- INICIO: Mejora Estética Horario de Atención --- */
+    .bot-card ul.availability-list {
+        margin-top: 10px; /* Espacio después del nombre del barbero (h4) */
+    }
+
+    .bot-card ul.availability-list li {
+        display: flex;
+        flex-direction: column; /* Apilar verticalmente */
+        align-items: flex-start; /* Alinear a la izquierda */
+        padding: 12px 0; /* Más espacio */
+        /* Sobrescribir el 'justify-content' y 'align-items' por defecto */
+        justify-content: flex-start;
+    }
+    
+    .bot-card ul.availability-list li .day-name {
+        /* "Lunes", "Martes", etc. */
+        font-weight: 500;
+        color: #FFFFFF; /* Blanco para el día */
+        font-size: 1.05em; /* Un poco más grande */
+        margin-bottom: 6px;
+    }
+    
+    .bot-card ul.availability-list li .time-available {
+        /* "09:00, 09:30..." */
+        font-size: 0.9em;
+        color: #A0A0A0; /* Gris claro para las horas */
+        line-height: 1.7; /* Más espacio entre líneas si se envuelve */
+        word-wrap: break-word; /* Asegura que se envuelva bien */
+        font-family: monospace; /* Opcional: para que los números se alineen bien */
+    }
+
+    .bot-card ul.availability-list li .time-closed {
+        /* "Cerrado" */
+        font-size: 0.9em;
+        color: #F44336; /* Rojo para "Cerrado" */
+        font-weight: 500;
+    }
+    /* --- FIN: Mejora Estética Horario de Atención --- */
+
 </style>
 </head>
 <body>
@@ -330,6 +370,19 @@
                     default :     // Fallback por si acaso
                         return   `$${numAmount}` ;
                 }
+            }
+            // FIN: Nueva función
+
+            /**
+             * INICIO: Nueva función para formatear horas (Mejora 30min)
+             * Convierte un número (ej: 9.5) a un string (ej: "09:30")
+             */
+            formatTime(hourFloat) {
+                const hour = Math.floor(hourFloat);
+                const minutes = (hourFloat % 1) * 60;
+                const formattedHour = String(hour).padStart(2, '0');
+                const formattedMinutes = String(minutes).padStart(2, '0');
+                return `${formattedHour}:${formattedMinutes}`;
             }
             // FIN: Nueva función
 
@@ -981,23 +1034,38 @@
                     return;
                 }
                 
-                const bookedHours = existingBookings.map(b => new Date(b.booking_date).getHours());
-                let availableHours = barberSchedule.filter(hour => !bookedHours.includes(hour));
+                // --- INICIO: MODIFICACIÓN 30 MINUTOS ---
+                // Convertimos las horas de las reservas a formato float (ej: 9:30 -> 9.5)
+                const bookedSlots = existingBookings.map(b => {
+                    const d = new Date(b.booking_date);
+                    return d.getHours() + (d.getMinutes() / 60.0);
+                });
+
+                // El horario del barbero (barberSchedule) ya viene con floats (ej: [9, 9.5, 10])
+                let availableSlots = barberSchedule.filter(slot => !bookedSlots.includes(slot));
                 
                 const now = new Date();
                 const isToday = date.toDateString() === now.toDateString();
 
                 if (isToday) {
-                    availableHours = availableHours.filter(hour => hour > now.getHours());
+                    const currentHourFloat = now.getHours() + (now.getMinutes() / 60.0);
+                    // Filtramos para que solo muestre horas que están en el futuro
+                    availableSlots = availableSlots.filter(slot => slot > currentHourFloat);
                 }
                 
-                if (availableHours.length === 0) {
+                if (availableSlots.length === 0) {
                     this.addBotMessage(`<div class="bot-card"><p>❌ <strong>No hay cupos disponibles</strong> para el ${date.toLocaleDateString()}.</p><p>Por favor, elige otra fecha.</p>${this.mainMenuButton}</div>`);
                     this.currentFlow = 'booking_date';
                     return;
                 }
 
-                const timeButtons = availableHours.map(hour => `<button class="command-button" data-command="reservar_hora:${hour}:00">${String(hour).padStart(2, '0')}:00</button>`).join('');
+                const timeButtons = availableSlots.map(slot => {
+                    const timeString = this.formatTime(slot);
+                    // El comando ahora solo pasa el valor flotante (ej: 9.5)
+                    return `<button class="command-button" data-command="reservar_hora:${slot}">${timeString}</button>`;
+                }).join('');
+                // --- FIN: MODIFICACIÓN 30 MINUTOS ---
+
                 this.addBotMessage(`<div class="bot-card"><h3>⏰ Horas disponibles para el ${date.toLocaleDateString()}</h3><div class="command-buttons-container">${timeButtons}<button class="command-button" data-command="menu">↩️ Volver al Menú</button></div></div>`);
                 this.currentFlow = 'booking_time';
             }
@@ -1009,9 +1077,17 @@
                     return;
                 }
 
-                const time = input.split(':')[1];
+                const timeSlotFloatString = input.split(':')[1]; // Esto será "9" o "9.5"
+                
+                // --- INICIO: MODIFICACIÓN 30 MINUTOS ---
                 const finalTimestamp = new Date(this.bookingData.date);
-                finalTimestamp.setHours(parseInt(time, 10), 0, 0, 0);
+                const slotFloat = parseFloat(timeSlotFloatString);
+                const hour = Math.floor(slotFloat);
+                const minutes = (slotFloat % 1) * 60;
+                
+                finalTimestamp.setHours(hour, minutes, 0, 0);
+                // --- FIN: MODIFICACIÓN 30 MINUTOS ---
+
                 this.bookingData.finalTimestamp = finalTimestamp;
                 
                 // --- INICIO: ACTUALIZACIÓN DE MONEDA (B.3) ---
@@ -1269,10 +1345,20 @@
                     const schedule = this.barberData.availability[barberName];
                     let barberScheduleHTML = Object.keys(days).map(key => {
                         const hours = schedule[key] || [];
-                        const timeRange = hours.length > 0 ? hours.map(h => `${h}:00`).join(', ') : 'Cerrado';
-                        return `<li><span>${days[key]}</span><span>${timeRange}</span></li>`;
+                        
+                        // --- INICIO: MODIFICACIÓN 30 MINUTOS (YA HECHA) ---
+                        const timeRange = hours.length > 0 ? hours.map(h => this.formatTime(h)).join(', ') : 'Cerrado';
+                        // --- FIN: MODIFICACIÓN 30 MINUTOS ---
+
+                        // --- INICIO: NUEVA MODIFICACIÓN ESTÉTICA ---
+                        const timeClass = timeRange === 'Cerrado' ? 'time-closed' : 'time-available';
+                        return `<li>
+                                    <span class="day-name">${days[key]}</span>
+                                    <span class="${timeClass}">${timeRange}</span>
+                                </li>`;
+                        // --- FIN: NUEVA MODIFICACIÓN ESTÉTICA ---
                     }).join('');
-                    availabilityHTML += `<ul>${barberScheduleHTML}</ul>`;
+                    availabilityHTML += `<ul class="availability-list">${barberScheduleHTML}</ul>`; // <-- Añadida esta clase
                 });
                 this.addBotMessage(`<div class="bot-card"><h3>⏰ Horario de Atención</h3>${availabilityHTML}${this.mainMenuButton}</div>`);
             }
