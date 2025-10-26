@@ -335,6 +335,34 @@
     /* --- FIN: Mejora Estética Horario de Atención --- */
 
     /* --- FIN: NUEVOS ESTILOS DARK MODE --- */
+
+
+    /* --- INICIO: MEJORA TEXTO DINÁMICO --- */
+    .dynamic-text-wrapper {
+        font-size: 0.9em;
+        color: #A0A0A0; /* Color de subtítulo */
+        margin-top: 8px; /* Espacio */
+        font-family: monospace; /* Look de terminal */
+        height: 1.2em; /* Altura fija para evitar saltos */
+    }
+
+    #dynamic-text {
+        color: #FFB300; /* Color de acento */
+        font-weight: bold;
+        /* Simula el cursor parpadeante */
+        border-right: 2px solid #FFB300;
+        animation: blink 1s steps(1) infinite;
+        padding-right: 2px;
+        letter-spacing: .05em; /* Un poco más de espacio */
+    }
+    
+    /* Animación del cursor */
+    @keyframes blink {
+        50% {
+            border-color: transparent;
+        }
+    }
+    /* --- FIN: MEJORA TEXTO DINÁMICO --- */
 </style>
 </head>
 <body>
@@ -344,7 +372,12 @@
              <div id="header-title">
                 <h1>💈 BarberConnect</h1>
                 <p id="headerSubtitle">Asistente Virtual</p>
-             </div>
+                
+                <div class="dynamic-text-wrapper">
+                    <span>Gestiona tu: </span>
+                    <span id="dynamic-text"></span>
+                </div>
+                </div>
              <div class="header-icons">
                 <div class="icon-wrapper" id="chatsIconWrapper" title="Ver mis chats">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 10H6v-2h12v2zm0-4H6V6h12v2z"></path></svg>
@@ -936,7 +969,7 @@ async handleAuthenticatedCommand(input) {
             <div class="bot-card">
                 <h3>⏳ Cuenta Pendiente de Aprobación</h3>
                 <p>¡Gracias por registrarte, <strong>${name}</strong>!</p>
-                <p>Tu cuenta ha sido creada, pero necesita ser aprobada manualmente por un administrador. Recibiremos una notificación y la revisaremos pronto.</p>
+                <p>Tu cuenta ha sido creada, pero necesita ser aprobada manually por un administrador. Recibiremos una notificación y la revisaremos pronto.</p>
                 <p>Por favor, ten paciencia. No necesitas hacer nada más.</p>
                 <div class="command-buttons-container" style="margin-top: 15px;">
                     <button class="command-button full-width return" data-command="/cerrar">Cerrar Sesión</button>
@@ -2350,6 +2383,59 @@ async handleAuthenticatedCommand(input) {
     let app;
     document.addEventListener('DOMContentLoaded', () => {
         app = new ChatApp();
+
+        // --- INICIO: MEJORA TEXTO DINÁMICO ---
+        function startDynamicText() {
+            const words = ["Agenda", "Clientes", "Finanzas", "Horarios", "Servicios"];
+            const dynamicTextEl = document.getElementById('dynamic-text');
+            
+            // Si el elemento no existe (p.ej. en Cliente.html), no hacer nada
+            if (!dynamicTextEl) return;
+
+            let wordIndex = 0;
+            let charIndex = 0;
+            let isDeleting = false;
+            let typeSpeed = 150; // Velocidad de tecleo
+            let deleteSpeed = 100; // Velocidad de borrado
+            let pauseTime = 2000; // Pausa al final de la palabra
+
+            function type() {
+                const currentWord = words[wordIndex];
+                let displayText = '';
+                let timeout = typeSpeed;
+
+                if (isDeleting) {
+                    // Estamos borrando
+                    displayText = currentWord.substring(0, charIndex - 1);
+                    charIndex--;
+                    timeout = deleteSpeed;
+                } else {
+                    // Estamos escribiendo
+                    displayText = currentWord.substring(0, charIndex + 1);
+                    charIndex++;
+                }
+
+                dynamicTextEl.innerHTML = displayText;
+
+                if (!isDeleting && charIndex === currentWord.length) {
+                    // Palabra terminada de escribir, pausar y empezar a borrar
+                    timeout = pauseTime;
+                    isDeleting = true;
+                } else if (isDeleting && charIndex === 0) {
+                    // Palabra terminada de borrar, pasar a la siguiente
+                    isDeleting = false;
+                    wordIndex = (wordIndex + 1) % words.length; // Loop
+                }
+
+                setTimeout(type, timeout);
+            }
+            
+            // Iniciar la animación
+            setTimeout(type, 500); // Pequeña pausa inicial
+        }
+        
+        startDynamicText(); // <-- Aquí llamamos a la nueva función
+        // --- FIN: MEJORA TEXTO DINÁMICO ---
     });
 </script>
 </body>
