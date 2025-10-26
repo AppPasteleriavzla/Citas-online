@@ -295,6 +295,45 @@
     }
     /* --- FIN: NUEVOS ESTILOS PARA HEADER DE CHAT DE CLIENTE --- */
     
+    /* --- INICIO: Mejora Estética Horario de Atención (index.html) --- */
+    .bot-card ul.availability-list {
+        margin-top: 10px;
+    }
+
+    .bot-card ul.availability-list li {
+        display: flex;
+        flex-direction: column; /* Apilar verticalmente */
+        align-items: flex-start; /* Alinear a la izquierda */
+        padding: 12px 0; /* Más espacio */
+        /* Sobrescribir el 'justify-content' y 'align-items' por defecto */
+        justify-content: flex-start;
+    }
+    
+    .bot-card ul.availability-list li .day-name {
+        /* "Lunes", "Martes", etc. */
+        font-weight: 500;
+        color: #FFFFFF; /* Blanco para el día */
+        font-size: 1.05em; /* Un poco más grande */
+        margin-bottom: 6px;
+    }
+    
+    .bot-card ul.availability-list li .time-available {
+        /* "09:00, 09:30..." */
+        font-size: 0.9em;
+        color: #A0A0A0; /* Gris claro para las horas */
+        line-height: 1.7; /* Más espacio entre líneas si se envuelve */
+        word-wrap: break-word; /* Asegura que se envuelva bien */
+        font-family: monospace; /* Opcional: para que los números se alineen bien */
+    }
+
+    .bot-card ul.availability-list li .time-closed {
+        /* "Cerrado" */
+        font-size: 0.9em;
+        color: #F44336; /* Rojo para "Cerrado" */
+        font-weight: 500;
+    }
+    /* --- FIN: Mejora Estética Horario de Atención --- */
+
     /* --- FIN: NUEVOS ESTILOS DARK MODE --- */
 </style>
 </head>
@@ -434,6 +473,19 @@
                 default:    // Fallback por si acaso
                     return `$${numAmount}`;
             }
+        }
+        // FIN: Nueva función
+
+        /**
+         * INICIO: Nueva función para formatear horas
+         * Convierte un número (ej: 9.5) a un string (ej: "09:30")
+         */
+        formatTime(hourFloat) {
+            const hour = Math.floor(hourFloat);
+            const minutes = (hourFloat % 1) * 60;
+            const formattedHour = String(hour).padStart(2, '0');
+            const formattedMinutes = String(minutes).padStart(2, '0');
+            return `${formattedHour}:${formattedMinutes}`;
         }
         // FIN: Nueva función
 
@@ -669,13 +721,28 @@
                 this.addUserMessage(`Configurar horario para: ${dayName}`);
                 await this.startDayEditFlow(dayToEdit);
             } else if (dayToConfirm) {
+                // --- INICIO: MODIFICACIÓN 30 MINUTOS ---
                 const startHour = document.getElementById(`start-hour-${dayToConfirm}`).value;
                 const endHour = document.getElementById(`end-hour-${dayToConfirm}`).value;
-                if (parseInt(startHour) >= parseInt(endHour)) { this.addBotMessage('<div class="bot-card"><p>UPS... La hora de finalización debe ser mayor que la de inicio. Por favor, inténtalo de nuevo.</p></div>'); this.showHorarioMenu(); return; }
-                this.addUserMessage(`Confirmar horario de ${startHour}:00 a ${endHour}:00`);
+                
+                const startFloat = parseFloat(startHour);
+                const endFloat = parseFloat(endHour);
+
+                if (startFloat >= endFloat) { 
+                    this.addBotMessage('<div class="bot-card"><p>UPS... La hora de finalización debe ser mayor que la de inicio. Por favor, inténtalo de nuevo.</p></div>'); 
+                    this.showHorarioMenu(); 
+                    return; 
+                }
+                
+                this.addUserMessage(`Confirmar horario de ${this.formatTime(startFloat)} a ${this.formatTime(endFloat)}`);
+                
                 let hours = [];
-                for (let i = parseInt(startHour); i < parseInt(endHour); i++) { hours.push(i); }
+                // Bucle modificado para ir de 30 en 30 minutos (0.5)
+                for (let i = startFloat; i < endFloat; i += 0.5) { 
+                    hours.push(i); 
+                }
                 await this.setAvailability(dayToConfirm, hours);
+                // --- FIN: MODIFICACIÓN 30 MINUTOS ---
             }
         }
         
@@ -1326,12 +1393,23 @@ async handleAuthenticatedCommand(input) {
             const availabilityOfBarber = (b.availability || {})[barberName] || {};
             
             const d = { mon: 'Lunes', tue: 'Martes', wed: 'Miércoles', thu: 'Jueves', fri: 'Viernes', sat: 'Sábado', sun: 'Domingo' };
+            
+            // --- INICIO: MODIFICACIÓN ESTÉTICA ---
             let a = Object.keys(d).map(k => {
                 const h = availabilityOfBarber[k] || [];
-                const t = h.length > 0 ? h.map(hr => `${parseInt(hr)}:00`).join(', ') : 'Cerrado';
-                return `<li><span class="item-name">${d[k]}</span><span class="item-detail">${t}</span></li>`;
+                const t = h.length > 0 ? h.map(hr => this.formatTime(hr)).join(', ') : 'Cerrado';
+                
+                const timeClass = t === 'Cerrado' ? 'time-closed' : 'time-available';
+                return `<li>
+                            <span class="day-name">${d[k]}</span>
+                            <span class="${timeClass}">${t}</span>
+                        </li>`;
             }).join('');
-            this.addBotMessage(`<div class="bot-card"><h3>⏰ Horario Semanal de ${barberName}</h3><ul>${a}</ul></div>`);
+            
+            // Se añade la clase 'availability-list' al <ul>
+            this.addBotMessage(`<div class="bot-card"><h3>⏰ Horario Semanal de ${barberName}</h3><ul class="availability-list">${a}</ul></div>`);
+            // --- FIN: MODIFICACIÓN ESTÉTICA ---
+            
             this.showHorarioMenu();
         }
         
@@ -1459,12 +1537,25 @@ async handleAuthenticatedCommand(input) {
             const startOfDay = new Date(date); startOfDay.setHours(0, 0, 0, 0);
             const endOfDay = new Date(date); endOfDay.setHours(23, 59, 59, 999);
             const { data: bookings, error } = await supabase.from('bookings').select('booking_date').eq('barber_name', barberName).in('status', ['pending', 'confirmed']).gte('booking_date', startOfDay.toISOString()).lte('booking_date', endOfDay.toISOString());
-            const bookedHours = bookings.map(b => new Date(b.booking_date).getHours());
-            const slotsHTML = barberSchedule.map(hour => {
-                const isBooked = bookedHours.includes(hour);
-                return `<div class="time-slot ${isBooked ? 'booked' : 'available'}">${hour}:00</div>`;
+            
+            // --- INICIO: MODIFICACIÓN 30 MINUTOS ---
+            // Convertimos las horas de las reservas a formato float (ej: 9:30 -> 9.5)
+            const bookedSlots = bookings.map(b => {
+                const d = new Date(b.booking_date);
+                return d.getHours() + (d.getMinutes() / 60.0);
+            });
+
+            let bookedCount = 0;
+            const slotsHTML = barberSchedule.map(hourSlot => {
+                const isBooked = bookedSlots.includes(hourSlot);
+                if (isBooked) bookedCount++;
+                // Usamos formatTime para mostrar la hora (ej: 09:30)
+                return `<div class="time-slot ${isBooked ? 'booked' : 'available'}">${this.formatTime(hourSlot)}</div>`;
             }).join('');
-            const availableCount = barberSchedule.length - bookedHours.length;
+            
+            const availableCount = barberSchedule.length - bookedCount;
+            // --- FIN: MODIFICACIÓN 30 MINUTOS ---
+
             this.hideTyping();
             const availabilityCard = `<div class="bot-card">
                 <h3>Disponibilidad para ${barberName}</h3>
@@ -1472,7 +1563,7 @@ async handleAuthenticatedCommand(input) {
                 <div class="availability-grid">${slotsHTML}</div>
                 <div class="availability-stats">
                     <div class="stat-item"><span class="stat-value" style="color: #28a745;">${availableCount}</span><span class="stat-label">Disponibles</span></div>
-                    <div class="stat-item"><span class="stat-value" style="color: #dc3545;">${bookedHours.length}</span><span class="stat-label">Ocupados</span></div>
+                    <div class="stat-item"><span class="stat-value" style="color: #dc3545;">${bookedCount}</span><span class="stat-label">Ocupados</span></div>
                     <div class="stat-item"><span class="stat-value">${barberSchedule.length}</span><span class="stat-label">Total</span></div>
                 </div>
                 ${backButtonHTML} 
@@ -1484,9 +1575,13 @@ async handleAuthenticatedCommand(input) {
             const days = { mon: 'Lunes', tue: 'Martes', wed: 'Miércoles', thu: 'Jueves', fri: 'Viernes', sat: 'Sábado', sun: 'Domingo' };
             const dayName = days[dayKey];
             let optionsHTML = '';
-            for (let i = 7; i <= 22; i++) {
-                optionsHTML += `<option value="${i}">${i}:00</option>`;
+            // --- INICIO: MODIFICACIÓN 30 MINUTOS ---
+            // Generamos opciones de 30 en 30 min (ej: 7.0, 7.5, 8.0)
+            // El bucle va hasta < 24 (para incluir 23:30)
+            for (let i = 7; i < 24; i += 0.5) {
+                optionsHTML += `<option value="${i}">${this.formatTime(i)}</option>`;
             }
+            // --- FIN: MODIFICACIÓN 30 MINUTOS ---
             const scheduleHTML = `<div class="bot-card">
                 <h3>Configurar Horario para ${dayName}</h3>
                 <p>Selecciona las horas de inicio y fin de la jornada. Las horas intermedias se añadirán automáticamente.</p>
