@@ -809,7 +809,7 @@
         showTyping() { if (this.isTyping) return; this.isTyping = true; const typingDiv = document.createElement('div'); typingDiv.className = 'message bot'; typingDiv.id = 'typing-indicator'; typingDiv.innerHTML = `<div class="typing"><span></span><span></span><span></span></div>`; this.messagesContainer.appendChild(typingDiv); this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight; }
         hideTyping() { this.isTyping = false; const indicator = document.getElementById('typing-indicator'); if (indicator) indicator.remove(); }
         
-        async processUserInput(input, originalText = null) {
+               async processUserInput(input, originalText = null) {
             if (originalText === null) originalText = input;
             this.showTyping();
             await new Promise(resolve => setTimeout(resolve, 600));
@@ -844,6 +844,13 @@
                 case 'editing_shop_name':
                     await this.updateShopName(originalText.trim());
                     break;
+                
+                // --- INICIO DE LA MODIFICACIÓN: UBICACIÓN ---
+                case 'awaiting_location_link':
+                    await this.parseAndSaveMapLink(originalText);
+                    break;
+                // --- FIN DE LA MODIFICACIÓN: UBICACIÓN ---
+
                 case 'authenticated':
                     await this.handleAuthenticatedCommand(input);
                     break;
@@ -859,6 +866,7 @@
                     this.addBotMessage('<div class="bot-card"><p>Vaya, no he entendido eso. ¿Podrías intentarlo de nuevo o usar uno de los botones del menú principal?</p></div>');
             }
         }
+
 async handleAuthenticatedCommand(input) {
             
             // --- INICIO: CORRECCIÓN DE LÓGICA ---
@@ -875,9 +883,6 @@ async handleAuthenticatedCommand(input) {
                 argString = parts.slice(1).join(' ');
             }
             // --- FIN: CORRECCIÓN DE LÓGICA ---
-
-            // const [command, ...args] = input.split(' '); // <-- REEMPLAZAMOS ESTO
-            // const argString = args.join(' '); // <-- Y ESTO
 
             switch(command) {
                 case '/miperfil': await this.showBarberProfile(); break;
@@ -901,6 +906,25 @@ async handleAuthenticatedCommand(input) {
                     await this.updateCurrency(newCode);
                     break;
                 // --- FIN: MANEJO DE MONEDA ---
+
+                // --- INICIO DE LA MODIFICACIÓN: UBICACIÓN ---
+                case '/editar_ubicacion':
+                    this.promptLocationEdit();
+                    break;
+                case '/location_use_gps':
+                    await this.getLocationFromGPS();
+                    break;
+                case '/location_paste_link':
+                    this.addBotMessage(`<div class="bot-card">
+                        <p>Pega el enlace de Google Maps aquí.</p>
+                        <p class="helper-text">Busca tu barbería en Google Maps, haz clic en "Compartir" y luego en "Copiar enlace".</p>
+                    </div>`);
+                    this.currentFlow = 'awaiting_location_link';
+                    break;
+                case '/location_delete':
+                    await this.updateLocation(null);
+                    break;
+                // --- FIN DE LA MODIFICACIÓN: UBICACIÓN ---
 
                 case 'menu': case 'menú': this.showMainMenu(); break;
                 case '/suscribirse_notificaciones': await this.registerServiceWorker(); break;
@@ -943,6 +967,7 @@ async handleAuthenticatedCommand(input) {
                     this.showMainMenu();
             }
         }
+
         
         showMainMenu() {
             const menuHTML = `<div class="bot-card"><h3>Menú Principal</h3><p>Hola de nuevo, ¿en qué te puedo ayudar hoy?</p><div class="command-buttons-container">
@@ -1186,7 +1211,7 @@ async handleAuthenticatedCommand(input) {
             }
         }
         
-        async showBarberProfile() {
+              async showBarberProfile() {
             this.showTyping();
             const profile = this.getBarberProfile();
             await new Promise(resolve => setTimeout(resolve, 500));
@@ -1220,7 +1245,6 @@ async handleAuthenticatedCommand(input) {
                 `;
             }
         
-            // --- INICIO DE LA CORRECCIÓN VISUAL ---
             const profileHTML = `
             <div class="bot-card">
                 <h3>👤 Mi Perfil</h3>
@@ -1251,6 +1275,19 @@ async handleAuthenticatedCommand(input) {
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"></path></svg>
                         </button>
                     </li>
+
+                    <li style="display: flex; align-items: center;">
+                        <span class="item-name">Ubicación:</span>
+                        <span class="item-detail" style="margin-left: 1rem; text-align: left;">
+                            ${profile.location ? 
+                                `<a href="https://www.google.com/maps?q=$${profile.location}" target="_blank" style="color: #FFB300; text-decoration: none;">Ver en Google Maps</a>` :
+                                'No establecida'
+                            }
+                        </span>
+                        <button class="edit-icon-button" data-command="/editar_ubicacion" style="margin-left: auto;" title="Editar ubicación">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"></path></svg>
+                        </button>
+                    </li>
                     </ul>
                 <p class="helper-text">Tus clientes usan este código para conectar contigo.</p>
         
@@ -1262,10 +1299,10 @@ async handleAuthenticatedCommand(input) {
                     <button class="command-button full-width return" data-command="menu">↩️ Volver al Menú</button>
                 </div>
             </div>`;
-            // --- FIN DE LA CORRECCIÓN VISUAL ---
         
             this.addBotMessage(profileHTML);
         }
+
         
         async copyCodeToClipboard(code, buttonElement) {
             try {
@@ -1404,6 +1441,119 @@ async handleAuthenticatedCommand(input) {
             }
             await this.showBarberProfile();
         }
+        
+        // --- INICIO: NUEVAS FUNCIONES DE UBICACIÓN ---
+
+        /**
+         * Muestra las opciones para editar la ubicación.
+         */
+        promptLocationEdit() {
+            const profile = this.getBarberProfile();
+            let deleteButtonHTML = '';
+
+            if (profile.location) {
+                deleteButtonHTML = `<button class="command-button cancel" data-command="/location_delete">🗑️ Eliminar Ubicación</button>`;
+            }
+
+            const menuHTML = `<div class="bot-card">
+                <h3>Gestionar Ubicación</h3>
+                <p>¿Cómo quieres establecer la ubicación de tu barbería?</p>
+                <div class="command-buttons-container">
+                    <button class="command-button confirm" data-command="/location_use_gps">📍 Usar mi ubicación actual</button>
+                    <button class="command-button" data-command="/location_paste_link">🔗 Pegar enlace de Google Maps</button>
+                    ${deleteButtonHTML}
+                    <button class="command-button full-width return" data-command="/miperfil">Cancelar</button>
+                </div>
+            </div>`;
+            this.addBotMessage(menuHTML);
+        }
+
+        /**
+         * Intenta obtener la geolocalización del navegador.
+         */
+        async getLocationFromGPS() {
+            if (!('geolocation' in navigator)) {
+                this.addBotMessage('<div class="bot-card"><p>❌ Tu navegador no soporta la geolocalización.</p></div>');
+                await this.showBarberProfile();
+                return;
+            }
+
+            this.addBotMessage('<div class="bot-card"><p>Por favor, acepta el permiso en tu navegador para obtener la ubicación...</p></div>');
+            this.showTyping();
+
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    const locationString = `${lat},${lng}`;
+                    await this.updateLocation(locationString);
+                },
+                (error) => {
+                    this.hideTyping();
+                    let errorMsg = '❌ Hubo un error desconocido.';
+                    if (error.code === error.PERMISSION_DENIED) {
+                        errorMsg = '❌ Has denegado el permiso de ubicación. Debes activarlo en la configuración de tu navegador.';
+                    } else if (error.code === error.POSITION_UNAVAILABLE) {
+                        errorMsg = '❌ No se pudo determinar tu ubicación actual.';
+                    }
+                    this.addBotMessage(`<div class="bot-card"><p>${errorMsg}</p></div>`);
+                    this.showBarberProfile();
+                }
+            );
+        }
+
+        /**
+         * Parsea un enlace de Google Maps para extraer latitud y longitud.
+         */
+        async parseAndSaveMapLink(link) {
+            // Regex para encontrar @lat,lng, en un enlace de Google
+            const regex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
+            const match = link.match(regex);
+
+            if (match && match[1] && match[2]) {
+                const lat = match[1];
+                const lng = match[2];
+                const locationString = `${lat},${lng}`;
+                await this.updateLocation(locationString);
+            } else {
+                this.addBotMessage(`<div class="bot-card">
+                    <p>❌ El enlace no parece ser válido o no contiene coordenadas (formato @lat,lng).</p>
+                    <p class="helper-text">Asegúrate de copiar el enlace correcto de Google Maps.</p>
+                </div>`);
+                this.currentFlow = 'authenticated';
+                await this.showBarberProfile();
+            }
+        }
+
+        /**
+         * Guarda la cadena de ubicación (o null) en Supabase.
+         */
+        async updateLocation(locationString) {
+            this.showTyping();
+            
+            const { data, error } = await supabase
+                .from('barbers')
+                .update({ location: locationString })
+                .eq('user_id', this.currentUser.id)
+                .select()
+                .single();
+
+            this.hideTyping();
+            this.currentFlow = 'authenticated';
+
+            if (error) {
+                console.error("Error updating location:", error);
+                this.addBotMessage('<div class="bot-card"><p>❌ Hubo un error al actualizar tu ubicación.</p></div>');
+            } else {
+                this.barberProfile = data; // Actualiza el perfil local
+                this.addBotMessage(`<div class="bot-card"><p>✅ ¡Ubicación actualizada con éxito!</p></div>`);
+            }
+            
+            await this.showBarberProfile(); // Muestra el perfil actualizado
+        }
+
+        // --- FIN: NUEVAS FUNCIONES DE UBICACIÓN ---
+
         
         async showServices() {
             const barberName = this.userData.selectedBarber;
