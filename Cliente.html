@@ -1121,11 +1121,37 @@
                     console.error('Error al crear la reserva en Supabase:', error);
                     this.addBotMessage(`<div class="bot-card"><p>Lo siento, ocurrió un error al crear tu reserva. <br><small>Detalle: ${error.message}</small></p>${this.mainMenuButton}</div>`);
                 } else {
-                    this.addBotMessage('<div class="bot-card"><p>✅ ¡Tu reserva ha sido confirmada con éxito!</p></div>');
+                    
+                    // --- INICIO: ¡NUEVO CÓDIGO AÑADIDO! ---
+                    
+                    // 1. Creamos el HTML para el botón de ubicación (si existe)
+                    let locationHTML = '';
+                    if (this.barberData.location) {
+                        const mapsUrl = `https://www.google.com/maps?q=$${this.barberData.location}`;
+                        locationHTML = `
+                            <div class="command-buttons-container" style="margin-top: 15px; margin-bottom: 5px; grid-template-columns: 1fr;">
+                                <a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" class="command-button" style="text-decoration: none; display: block;">
+                                    📍 Ver Ubicación
+                                </a>
+                            </div>`;
+                    }
+
+                    // 2. Mostramos el nuevo mensaje de confirmación
+                    this.addBotMessage(`
+                        <div class="bot-card">
+                            <p>✅ <strong>¡Tu reserva ha sido confirmada con éxito!</strong></p>
+                            <p>¡Te esperamos!</p>
+                            ${locationHTML} 
+                        </div>
+                    `);
+                    
+                    // --- FIN: ¡NUEVO CÓDIGO AÑADIDO! ---
+                    // (La línea original 'this.addBotMessage(...)' se elimina y reemplaza por la de arriba)
                 }
                 this.bookingData = {};
                 setTimeout(() => this.showClientMainMenu(), 1500);
             }
+
 
             async checkConnection() {
                 const storedCode = localStorage.getItem('barber_code');
@@ -1360,8 +1386,35 @@
                     }).join('');
                     availabilityHTML += `<ul class="availability-list">${barberScheduleHTML}</ul>`; // <-- Añadida esta clase
                 });
-                this.addBotMessage(`<div class="bot-card"><h3>⏰ Horario de Atención</h3>${availabilityHTML}${this.mainMenuButton}</div>`);
+                
+                // --- INICIO: ¡NUEVO CÓDIGO AÑADIDO! ---
+                // Esta sección comprueba si el barbero tiene una ubicación guardada.
+                let locationHTML = '';
+                if (this.barberData.location) {
+                    // Construye la URL de Google Maps usando las coordenadas (ej: "lat,lng")
+                    const mapsUrl = `https://www.google.com/maps?q=${this.barberData.location}`;
+                    
+                    // Creamos un botón (usando una etiqueta <a> con clases de botón)
+                    locationHTML = `
+                        <div class="command-buttons-container" style="margin-top: 15px; margin-bottom: 5px; grid-template-columns: 1fr;">
+                            <a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" class="command-button" style="text-decoration: none; display: block;">
+                                📍 Ver Ubicación en Google Maps
+                            </a>
+                        </div>`;
+                }
+                // --- FIN: ¡NUEVO CÓDIGO AÑADIDO! ---
+
+                // --- INICIO: LÍNEA MODIFICADA ---
+                // Añadimos la variable 'locationHTML' a la tarjeta.
+                this.addBotMessage(`<div class="bot-card">
+                    <h3>⏰ Horario de Atención</h3>
+                    ${availabilityHTML}
+                    ${locationHTML} 
+                    ${this.mainMenuButton}
+                </div>`);
+                // --- FIN: LÍNEA MODIFICADA ---
             }
+
 
             async startBookingFlow() {
                 if (!this.barberData.services) { 
