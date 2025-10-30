@@ -298,6 +298,108 @@
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9sa2pldmxrcWRhZmJodWlzemZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyNzc5ODcsImV4cCI6MjA3NDg1Mzk4N30.5V7LTjITA3szqyNxUy67K0r1IhaB9MpnxSML7IygYcM';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+        // =============================================
+        // ASISTENTE IA PARA CLIENTES
+        // =============================================
+        class ClientAIAssistant {
+            constructor() {
+                
+                this.conversationHistory = [];
+                this.maxHistory = 5;
+            }
+
+           // REEMPLAZA TU FUNCIÓN 'getAIResponse' CON ESTA:
+        async getAIResponse(userMessage) {
+            
+            // ¡Ya no necesitamos la API Key aquí! La eliminamos.
+            
+            try {
+                // Preparamos el historial para enviarlo (separado)
+                const historyPayload = {
+                    past_user_inputs: this.conversationHistory
+                        .slice(-this.maxHistory)
+                        .filter(m => m.role === "user")
+                        .map(m => m.content),
+                    generated_responses: this.conversationHistory
+                        .slice(-this.maxHistory)
+                        .filter(m => m.role === "assistant")
+                        .map(m => m.content),
+                };
+
+                // ¡AQUÍ ESTÁ LA MAGIA!
+                // Llamamos a nuestra Edge Function "asistente-ia"
+                const { data, error } = await supabase.functions.invoke('asistente-ia', {
+                    body: {
+                        userMessage: userMessage,
+                        history: historyPayload
+                    }
+                });
+
+                if (error) {
+                    throw error; // Lanza el error para que lo capture el 'catch'
+                }
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                let aiResponse = data.generated_text;
+
+                // Limpiar respuesta (tu lógica original)
+                if (aiResponse.includes(userMessage)) {
+                    aiResponse = aiResponse.replace(userMessage, '').trim();
+                }
+
+                // Actualizar historial (tu lógica original)
+                this.conversationHistory.push(
+                    { role: "user", content: userMessage },
+                    { role: "assistant", content: aiResponse }
+                );
+
+                if (this.conversationHistory.length > this.maxHistory * 2) {
+                    this.conversationHistory = this.conversationHistory.slice(-this.maxHistory * 2);
+                }
+
+                return aiResponse;
+
+            } catch (error) {
+                console.error("Error con la IA (vía Supabase):", error);
+                // Si la Edge Function falla, usamos la respuesta de fallback
+                return this.getFallbackResponse(userMessage);
+            }
+        }
+
+            getFallbackResponse(userMessage) {
+                const lowerMessage = userMessage.toLowerCase();
+                
+                // Respuestas predeterminadas inteligentes
+                if (lowerMessage.match(/(hola|buenos|días|tardes|noches|hey|hi|buenas)/)) {
+                    return "¡Hola! Soy tu asistente virtual de la barbería. ¿En qué puedo ayudarte hoy? Puedo ayudarte con reservas, servicios, horarios o conectarte con el barbero.";
+                }
+                if (lowerMessage.match(/(gracias|thanks|agradec)/)) {
+                    return "¡De nada! Estoy aquí para ayudarte. ¿Necesitas algo más?";
+                }
+                if (lowerMessage.match(/(adiós|chao|hasta|luego|bye|nos vemos)/)) {
+                    return "¡Hasta luego! Que tengas un excelente día. No dudes en volver si necesitas ayuda.";
+                }
+                if (lowerMessage.match(/(precio|cuánto|cuesta|valor)/)) {
+                    return "Puedo mostrarte los precios de nuestros servicios. Usa el botón 'Ver Servicios' para ver todos los servicios y sus precios actualizados.";
+                }
+                if (lowerMessage.match(/(horario|horas|abre|cierra|disponible)/)) {
+                    return "Puedo mostrarte el horario de atención. Usa el botón 'Ver Horario' para ver los horarios disponibles de los barberos.";
+                }
+                if (lowerMessage.match(/(reserva|cita|agendar|sacar hora)/)) {
+                    return "¡Perfecto! Puedo ayudarte a reservar una cita. Usa el botón 'Hacer una Reserva' para comenzar el proceso de reserva.";
+                }
+                
+                return "Entiendo que quieres ayuda. Puedo ayudarte con reservas, ver servicios, horarios, o conectarte directamente con el barbero. ¿Qué te gustaría hacer?";
+            }
+
+            resetHistory() {
+                this.conversationHistory = [];
+            }
+        }
+
         class ClientChatApp {
             constructor() {
                 this.currentFlow = 'init';
@@ -306,6 +408,13 @@
                 this.bookingData = {};
                 this.profileUpdateData = {}; 
                 this.isTyping = false;
+                
+                // =============================================
+                // AGREGAR ESTAS 2 LÍNEAS ↓
+                // =============================================
+                this.aiAssistant = new ClientAIAssistant();
+                this.isAIConversation = false;
+                // =============================================
                 
                 this.chatId = null;
                 this.chatSubscription = null;
@@ -554,54 +663,39 @@
                 }
             }
             
-            async processUserInput(input) {
-                if (this.qrScanner) {
-                    await this.qrScanner.stop().catch(e => console.log("Scanner already stopped."));
-                    this.qrScanner = null;
-                }
+            /**
+             * Procesa el input como comando del sistema
+             * Retorna true si fue un comando, false si no
+             */
+            async tryProcessAsCommand(input) {
+                const lowerInput = input.toLowerCase();
                 
-               if (this.currentFlow === 'live_chat') {
-                    if (input === 'menu') { 
-                        this.handleMenuButton();
-                    }
-                    return;
-                }
-
-                this.showTyping();
-                await new Promise(resolve => setTimeout(resolve, 600));
-                this.hideTyping();
-
-                if (input === 'menu') {
-                    this.bookingData = {}; 
-                    this.profileUpdateData = {};
-                    this.showClientMainMenu();
-                    return;
-                }
-
+                // Comandos del sistema (existente)
                 if (input.startsWith('seleccionar_barbero:')) {
                     const barberName = input.split(':')[1];
                     this.bookingData.barberName = barberName;
                     await this.showServicesForBooking();
-                    return;
+                    return true;
                 }
 
                 if (this.currentFlow === 'awaiting_code') {
                     await this.handleCodeEntry(input);
-                    return; 
+                    return true;
                 }
 
                 if (this.currentFlow === 'awaiting_phone') {
                     await this.findOrCreateClientByPhone(input);
-                    return; 
+                    return true;
                 }
 
+                // Flujos específicos existentes
                 switch (this.currentFlow) {
                     case 'booking_date':
                         await this.handleDateSelection(input);
-                        return;
+                        return true;
                     case 'booking_time':
                         await this.handleTimeSelection(input);
-                        return;
+                        return true;
                     case 'booking_confirmation':
                          if (input === 'confirmar_reserva') {
                             await this.confirmAndCreateBooking();
@@ -609,45 +703,91 @@
                             this.addBotMessage(`<div class="bot-card"><p>Reserva cancelada.</p></div>`);
                             this.showClientMainMenu();
                          }
-                        return;
+                        return true;
                     case 'editing_profile_firstname':
                         this.profileUpdateData.firstName = input;
                         this.addBotMessage(`<div class="bot-card"><p>¡Entendido, ${input}!</p><p>Ahora, por favor, dime tu apellido.</p>${this.mainMenuButton}</div>`);
                         this.currentFlow = 'editing_profile_lastname';
-                        return;
+                        return true;
                     case 'editing_profile_lastname':
                         this.profileUpdateData.lastName = input;
                         await this.updateClientProfile();
-                        return;
+                        return true;
                 }
+
+                // Comandos rápidos del sistema
+                const quickCommands = {
+                    '/servicios': () => this.showServices(),
+                    '/horario': () => this.showAvailability(),
+                    '/reservar': () => this.startBookingFlow(),
+                    '/hablar': () => this.enterLiveChatMode(),
+                    '/miperfil': () => this.startProfileEditFlow(),
+                    '/pagar_qr': () => this.startQRScanner(),
+                    '/suscribirse_notificaciones': () => this.registerServiceWorker(),
+                    'menu': () => this.showClientMainMenu(),
+                    'menú': () => this.showClientMainMenu()
+                };
+
+                if (quickCommands[lowerInput]) {
+                    await quickCommands[lowerInput]();
+                    return true;
+                }
+
+                // Si no es un comando del sistema
+                return false;
+            }
+
+            /**
+             * Maneja conversación con IA
+             */
+            async handleAIConversation(input) {
+                this.isAIConversation = true;
                 
-                if (input.startsWith('reservar_servicio:')) {
-                    const serviceName = input.split(':')[1];
-                    const barberServices = this.barberData.services[this.bookingData.barberName] || [];
-                    this.bookingData.service = barberServices.find(s => s.name === serviceName);
-                    this.addBotMessage(`<div class="bot-card"><p>Has seleccionado: <strong>${this.bookingData.service.name}</strong> (${this.formatCurrency(this.bookingData.service.price)}).</p><p>Por favor, elige una fecha (p. ej., "hoy", "mañana" o "25/12"):</p>${this.mainMenuButton}</div>`);
-                    this.currentFlow = 'booking_date';
+                const aiResponse = await this.aiAssistant.getAIResponse(input);
+                
+                // Mostrar respuesta de la IA con opciones del sistema
+                const responseHTML = `
+                    <div class="bot-card">
+                        <p>${aiResponse}</p>
+                        <div class="command-buttons-container" style="margin-top: 15px;">
+                            <button class="command-button" data-command="/reservar">📅 Reservar Cita</button>
+                            <button class="command-button" data-command="/servicios">🛠️ Ver Servicios</button>
+                            <button class="command-button" data-command="/horario">⏰ Ver Horario</button>
+                            <button class="command-button" data-command="/hablar">💬 Hablar con Barbero</button>
+                            <button class="command-button" data-command="menu">📋 Ver Menú Completo</button>
+                        </div>
+                    </div>
+                `;
+                
+                this.addBotMessage(responseHTML);
+            }
+
+            async processUserInput(input) {
+                // Detener el escáner QR si está activo
+                if (this.qrScanner) {
+                    await this.qrScanner.stop().catch(e => console.log("Scanner already stopped."));
+                    this.qrScanner = null;
+                }
+
+                // Si estamos en chat en vivo, manejar de forma normal
+                if (this.currentFlow === 'live_chat') {
+                    if (input === 'menu') { 
+                        this.handleMenuButton();
+                    }
                     return;
                 }
 
-                switch (input) {
-                    case '/servicios': await this.showServices(); break;
-                    case '/horario': await this.showAvailability(); break;
-                    case '/reservar': await this.startBookingFlow(); break;
-                    case '/hablar': await this.enterLiveChatMode(); break;
-                    case '/miperfil': await this.startProfileEditFlow(); break;
-                    case '/pagar_qr': await this.startQRScanner(); break;
-                    case '/suscribirse_notificaciones': await this.registerServiceWorker(); break; // Manejar el nuevo comando
-                    case '/editar_client_name':
-                        this.addBotMessage(`<div class="bot-card"><p>Tu nombre actual es <strong>${this.clientProfile.first_name}</strong>.</p><p>Por favor, escribe tu nuevo nombre.</p>${this.mainMenuButton}</div>`);
-                        this.currentFlow = 'editing_profile_firstname';
-                        break;
-                    case 'menu': this.showClientMainMenu(); break;
-                    default:
-                        this.addBotMessage(`<div class="bot-card"><p>Actualmente, no puedo responder de manera natural. Sin embargo, puedes explorar utilizando los botones del menú. 😀</p></div>`);
-                        this.showClientMainMenu();
-                        break;
+                this.showTyping();
+                
+                // Primero intentar procesar como comando del sistema
+                const wasCommand = await this.tryProcessAsCommand(input);
+                
+                if (!wasCommand) {
+                    // Si no era un comando, usar la IA
+                    await this.handleAIConversation(input);
                 }
+                
+                this.hideTyping();
             }
 
             async startQRScanner() {
